@@ -1,9 +1,47 @@
-node_modules
-dist
-build
+# =========================
+# Dependencies / builds
+# =========================
+node_modules/
+dist/
+build/
 
+# =========================
+# Environment variables
+# =========================
 .env
 .env.*
-*.log
+*.env
 
+# =========================
+# Logs
+# =========================
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# =========================
+# OS / editor
+# =========================
 .DS_Store
+Thumbs.db
+
+# =========================
+# Archives / random files
+# =========================
+*.zip
+*.rar
+*.7z
+*.rtf
+
+# =========================
+# Uploads (runtime files)
+# =========================
+server/uploads/
+
+# =========================
+# Stripe CLI / binaries
+# =========================
+stripe.exe
+**/stripe.exe
+stripe_*/
