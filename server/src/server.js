@@ -20,7 +20,7 @@ import subscriptionRoutes from "../routes/subscription.js";
 import Payment from "../models/Payment.js";
 import Room from "../models/Room.js";
 
-dotenv.config({ path: new URL("../.env", import.meta.url) });
+dotenv.config();
 
 console.log("ENV CHECK:", {
   mongo: !!process.env.MONGO_URI,
