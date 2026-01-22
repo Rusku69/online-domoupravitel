@@ -1,0 +1,22 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-sky-50 text-slate-800 font-sans;
+  }
+}
+/* Добавяне в index.css */
+body {
+  font-family: 'Inter', sans-serif;
+}
+
+.table-row:hover {
+  background-color: #f9fafb;
+  transition: 0.2s ease;
+}
+
+
