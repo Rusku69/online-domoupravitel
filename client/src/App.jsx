@@ -1,3 +1,4 @@
+console.log("VITE_API_URL =", import.meta.env.VITE_API_URL);
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useEffect } from "react";
 import { useAuth } from "./store/auth";
