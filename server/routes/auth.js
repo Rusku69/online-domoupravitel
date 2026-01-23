@@ -18,11 +18,6 @@ function appUrl(path) {
   return base + path;
 }
 
-function apiUrl(path) {
-  const base = (process.env.API_URL || "http://localhost:5000").replace(/\/$/, "");
-  return base + path;
-}
-
 function strongPasswordHint(pw) {
   const s = String(pw || "");
   if (s.length < 8) return "Паролата трябва да е поне 8 символа.";
@@ -38,9 +33,9 @@ async function setEmailVerifyToken(user) {
   return verifyToken;
 }
 
-// ✅ helper: send verify email
+// ✅ helper: send verify email (FRONTEND link)
 async function sendVerifyEmail(email, verifyToken) {
-  const link = apiUrl(`/api/auth/verify-email?token=${verifyToken}&email=${encodeURIComponent(email)}`);
+  const link = appUrl(`/verify-email?token=${verifyToken}&email=${encodeURIComponent(email)}`);
 
   await sendEmail({
     to: email,
@@ -58,20 +53,15 @@ async function sendVerifyEmail(email, verifyToken) {
 
 // ✅ normalize DB errors to proper HTTP responses
 function handleMongoErrors(res, e, fallbackMessage = "Server error") {
-  // Duplicate key (unique)
   if (e?.code === 11000) {
-    // e.keyValue usually has { email: '...' }
     return res.status(409).json({ message: "Този имейл вече съществува." });
   }
 
-  // Mongoose validation errors
   if (e?.name === "ValidationError") {
-    // collect messages
     const first = Object.values(e.errors || {})?.[0]?.message;
     return res.status(400).json({ message: first || "Невалидни данни." });
   }
 
-  // Custom error from schema validate (pre validate) or other places
   if (e?.statusCode && Number.isFinite(e.statusCode)) {
     return res.status(e.statusCode).json({ message: e.message || "Невалидни данни." });
   }
@@ -143,7 +133,7 @@ router.post("/register", async (req, res) => {
       emailVerifyExpires: null,
     });
 
-    // ✅ create token + send mail (не спира регистрацията ако SMTP не работи)
+    // ✅ create token + send mail (не спира регистрацията ако mail не работи)
     try {
       const verifyToken = await setEmailVerifyToken(user);
       await sendVerifyEmail(email, verifyToken);
@@ -164,6 +154,8 @@ router.post("/register", async (req, res) => {
 
 /**
  * ✅ GET /api/auth/verify-email
+ * NOTE: ако ползваш frontend /verify-email страница, тя трябва да вика POST verify endpoint
+ * или да hit-не този endpoint. Ако този endpoint ти е нужен, оставям го.
  */
 router.get("/verify-email", async (req, res) => {
   try {
@@ -219,7 +211,7 @@ router.post("/resend-verify-email", requireAuth, async (req, res) => {
       await sendVerifyEmail(user.email, verifyToken);
     } catch (mailErr) {
       console.error("Resend verify failed:", mailErr?.message);
-      return res.status(500).json({ message: "SMTP грешка: не успях да изпратя имейл." });
+      return res.status(500).json({ message: "Не успях да изпратя имейл (mail provider error)." });
     }
 
     return res.json({ message: "✅ Изпратен е нов имейл за потвърждение." });
@@ -283,7 +275,7 @@ router.post("/forgot-password", async (req, res) => {
       });
     } catch (mailErr) {
       console.error("Reset email send failed:", mailErr?.message);
-      // IMPORTANT: do not reveal SMTP issues to attacker; still return ok-ish
+      // do not reveal details
     }
 
     return res.json({ message: "✅ Ако имейлът съществува, ще получиш линк." });
@@ -323,7 +315,7 @@ router.post("/reset-password", async (req, res) => {
       return res.status(400).json({ message: "Невалиден токен." });
     }
 
-    user.password = newPassword; // hash via pre-save
+    user.password = newPassword;
     user.passwordResetTokenHash = "";
     user.passwordResetExpires = null;
     await user.save();
