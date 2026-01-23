@@ -33,7 +33,7 @@ async function setEmailVerifyToken(user) {
   return verifyToken;
 }
 
-// ✅ helper: send verify email (FRONTEND link)
+// ✅ helper: send verify email (FRONTEND link) — PLAIN TEXT (no click tracking redirects)
 async function sendVerifyEmail(email, verifyToken) {
   const link = appUrl(`/verify-email?token=${verifyToken}&email=${encodeURIComponent(email)}`);
 
@@ -43,8 +43,10 @@ async function sendVerifyEmail(email, verifyToken) {
     html: `
       <div style="font-family:Arial,sans-serif">
         <h2>Потвърждение на имейл</h2>
-        <p>Натисни линка:</p>
-        <p><a href="${link}">${link}</a></p>
+        <p>Копирай и отвори линка в браузър (copy/paste):</p>
+        <p style="word-break:break-all;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;">
+          ${link}
+        </p>
         <p>Линкът е валиден 24 часа.</p>
       </div>
     `,
@@ -154,8 +156,7 @@ router.post("/register", async (req, res) => {
 
 /**
  * ✅ GET /api/auth/verify-email
- * NOTE: ако ползваш frontend /verify-email страница, тя трябва да вика POST verify endpoint
- * или да hit-не този endpoint. Ако този endpoint ти е нужен, оставям го.
+ * (optional redirect flow)
  */
 router.get("/verify-email", async (req, res) => {
   try {
@@ -191,6 +192,49 @@ router.get("/verify-email", async (req, res) => {
     return res.redirect(appUrl("/login?verified=1"));
   } catch (e) {
     return res.status(500).send("Verify error");
+  }
+});
+
+/**
+ * ✅ POST /api/auth/verify-email
+ * This matches твоят VerifyEmail.jsx (POST with { token, email })
+ */
+router.post("/verify-email", async (req, res) => {
+  try {
+    const email = String(req.body.email || "").trim().toLowerCase();
+    const token = String(req.body.token || "").trim();
+
+    if (!email || !token) {
+      return res.status(400).json({ message: "Липсва email/token." });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "Потребителят не е намерен." });
+
+    if (user.emailVerified) {
+      return res.json({ message: "✅ Имейлът вече е потвърден." });
+    }
+
+    if (!user.emailVerifyTokenHash || !user.emailVerifyExpires) {
+      return res.status(400).json({ message: "Няма активен токен." });
+    }
+
+    if (new Date(user.emailVerifyExpires) < new Date()) {
+      return res.status(400).json({ message: "Линкът е изтекъл. Изпрати ново потвърждение." });
+    }
+
+    if (hashToken(token) !== user.emailVerifyTokenHash) {
+      return res.status(400).json({ message: "Невалиден токен. Изпрати ново потвърждение." });
+    }
+
+    user.emailVerified = true;
+    user.emailVerifyTokenHash = "";
+    user.emailVerifyExpires = null;
+    await user.save();
+
+    return res.json({ message: "✅ Имейлът е потвърден успешно." });
+  } catch (e) {
+    return res.status(500).json({ message: "Verify error", error: e.message });
   }
 });
 
@@ -268,8 +312,10 @@ router.post("/forgot-password", async (req, res) => {
         html: `
           <div style="font-family:Arial,sans-serif">
             <h2>Смяна на парола</h2>
-            <p>Линк (валиден 30 минути):</p>
-            <p><a href="${link}">${link}</a></p>
+            <p>Копирай и отвори линка в браузър (copy/paste). Линкът е валиден 30 минути:</p>
+            <p style="word-break:break-all;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;">
+              ${link}
+            </p>
           </div>
         `,
       });
