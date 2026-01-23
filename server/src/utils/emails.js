@@ -1,23 +1,21 @@
 import nodemailer from "nodemailer";
 
 export function makeTransport() {
-  const host = process.env.SMTP_HOST;
-  const port = Number(process.env.SMTP_PORT || 587);
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
 
-  if (!host || !user || !pass) {
-    throw new Error("SMTP env липсва (SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS)");
+  if (!user || !pass) {
+    throw new Error("SMTP env липсва (SMTP_USER/SMTP_PASS)");
   }
 
   return nodemailer.createTransport({
-    host,
-    port,
-    secure: false, // важно за 587
+    service: "gmail",
     auth: { user, pass },
-    tls: {
-      rejectUnauthorized: false,
-    },
+
+    // IMPORTANT за Render
+    connectionTimeout: 20_000,
+    greetingTimeout: 20_000,
+    socketTimeout: 30_000,
   });
 }
 
