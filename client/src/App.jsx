@@ -1,10 +1,13 @@
 console.log("VITE_API_URL =", import.meta.env.VITE_API_URL);
-import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+
+import { Routes, Route, useLocation } from "react-router-dom";
 import { useEffect } from "react";
 import { useAuth } from "./store/auth";
 
 import Navbar from "./components/Navbar";
 import ProtectedRoute from "./components/ProtectedRoute";
+import RoomGuard from "./components/RoomGuard";
+import SiteFooter from "./components/SiteFooter";
 
 import Home from "./pages/Home";
 import Login from "./pages/Login";
@@ -25,15 +28,12 @@ import AdminRooms from "./pages/AdminRooms";
 import VerifyEmail from "./pages/VerifyEmail";
 import ResetPassword from "./pages/ResetPassword";
 import ForgotPassword from "./pages/ForgotPassword";
-import RoomGuard from "./components/RoomGuard";
-
-
 
 export default function App() {
   const location = useLocation();
   const { token, user, fetchUser } = useAuth();
 
-  // ✅ крие Navbar на публичните страници
+  // крие Navbar на публичните страници
   const hideNavbar = ["/", "/login", "/register"].includes(location.pathname);
 
   useEffect(() => {
@@ -41,96 +41,24 @@ export default function App() {
   }, [token, user, fetchUser]);
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col bg-slate-50">
       {!hideNavbar && <Navbar />}
 
       <main className="flex-1">
         <Routes>
-          {/* ✅ Landing */}
+          {/* Landing */}
           <Route path="/" element={<Home />} />
 
-          {/* ✅ Public */}
+          {/* Public */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
 
-          {/* ✅ Protected */}
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            }
-          />
+          {/* Email / Password flows (public) */}
           <Route path="/verify-email" element={<VerifyEmail />} />
-<Route path="/reset-password" element={<ResetPassword />} />
-<Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
 
-
-          <Route
-  path="/admin/rooms"
-  element={
-    <ProtectedRoute>
-      <AdminRooms />
-    </ProtectedRoute>
-  }
-/>
-
-<Route
-  path="/dashboard"
-  element={
-    <ProtectedRoute>
-      <RoomGuard>
-        <Dashboard />
-      </RoomGuard>
-    </ProtectedRoute>
-  }
-/>
-
-<Route
-  path="/announcements"
-  element={
-    <ProtectedRoute>
-      <RoomGuard>
-        <Announcements />
-      </RoomGuard>
-    </ProtectedRoute>
-  }
-/>
-
-<Route
-  path="/payments"
-  element={
-    <ProtectedRoute>
-      <RoomGuard>
-        <Payments />
-      </RoomGuard>
-    </ProtectedRoute>
-  }
-/>
-
-// room си остава само ProtectedRoute (за да може да влезе в стая)
-<Route
-  path="/room"
-  element={
-    <ProtectedRoute>
-      <Room />
-    </ProtectedRoute>
-  }
-/>
-
-// ✅ Account трябва да е винаги достъпен за логнат
-<Route
-  path="/account"
-  element={
-    <ProtectedRoute>
-      <Account />
-    </ProtectedRoute>
-  }
-/>
-
-
-
+          {/* Protected (logged in) */}
           <Route
             path="/room"
             element={
@@ -141,56 +69,44 @@ export default function App() {
           />
 
           <Route
-  path="/residents"
-  element={
-    <ProtectedRoute>
-      <Residents />
-    </ProtectedRoute>
-  }
-/>
-
-<Route
-  path="/account"
-  element={
-    <ProtectedRoute>
-      <Account />
-    </ProtectedRoute>
-  }
-/>
-
-          <Route
-            path="/announcements"
+            path="/dashboard"
             element={
               <ProtectedRoute>
-                <Announcements />
+                <RoomGuard>
+                  <Dashboard />
+                </RoomGuard>
               </ProtectedRoute>
             }
           />
 
           <Route
-  path="/admin"
-  element={
-    <ProtectedRoute>
-      <Admin />
-    </ProtectedRoute>
-  }
-/>
+            path="/account"
+            element={
+              <ProtectedRoute>
+                <Account />
+              </ProtectedRoute>
+            }
+          />
 
+          {/* RoomGuard секции */}
+          <Route
+            path="/announcements"
+            element={
+              <ProtectedRoute>
+                <RoomGuard>
+                  <Announcements />
+                </RoomGuard>
+              </ProtectedRoute>
+            }
+          />
 
           <Route
             path="/payments"
             element={
               <ProtectedRoute>
-                <Payments />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/reports"
-            element={
-              <ProtectedRoute>
-                <Reports />
+                <RoomGuard>
+                  <Payments />
+                </RoomGuard>
               </ProtectedRoute>
             }
           />
@@ -199,11 +115,55 @@ export default function App() {
             path="/signals"
             element={
               <ProtectedRoute>
-                <Signals />
+                <RoomGuard>
+                  <Signals />
+                </RoomGuard>
               </ProtectedRoute>
             }
           />
 
+          <Route
+            path="/reports"
+            element={
+              <ProtectedRoute>
+                <RoomGuard>
+                  <Reports />
+                </RoomGuard>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/residents"
+            element={
+              <ProtectedRoute>
+                <RoomGuard>
+                  <Residents />
+                </RoomGuard>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Admin */}
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute>
+                <Admin />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/rooms"
+            element={
+              <ProtectedRoute>
+                <AdminRooms />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Stripe flow */}
           <Route
             path="/checkout/:id"
             element={
@@ -226,6 +186,9 @@ export default function App() {
           <Route path="*" element={<div className="p-6">404 - Страницата не е намерена</div>} />
         </Routes>
       </main>
+
+      {/* Глобален футър — винаги долу */}
+      <SiteFooter />
     </div>
   );
 }

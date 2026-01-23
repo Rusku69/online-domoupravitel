@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import api from "../lib/api";
 import { useAuth } from "../store/auth";
 import { PageHeader, HelpCard, ErrorBox } from "../components/PageBits";
+import SiteFooter from "../components/SiteFooter";
 
 function fmtDate(d) {
   if (!d) return "—";
@@ -24,28 +25,28 @@ function fmtDateTime(d) {
 
 function Pill({ children, tone = "gray" }) {
   const map = {
-    gray: "bg-slate-100 text-slate-700",
-    green: "bg-green-100 text-green-700",
-    yellow: "bg-yellow-100 text-yellow-700",
-    red: "bg-red-100 text-red-700",
-    sky: "bg-sky-100 text-sky-700",
+    gray: "bg-slate-100 text-slate-700 border-slate-200",
+    green: "bg-emerald-50 text-emerald-900 border-emerald-200",
+    yellow: "bg-amber-50 text-amber-900 border-amber-200",
+    red: "bg-rose-50 text-rose-900 border-rose-200",
+    sky: "bg-slate-50 text-slate-700 border-slate-200",
   };
   return (
-    <span className={`inline-flex text-xs px-2 py-1 rounded-full ${map[tone] || map.gray}`}>
+    <span className={`inline-flex text-xs px-2.5 py-1 rounded-full border ${map[tone] || map.gray}`}>
       {children}
     </span>
   );
 }
 
 function cellTone(status) {
-  if (status === "paid") return "bg-green-600 text-white";
-  if (status === "unpaid") return "bg-red-600 text-white";
+  if (status === "paid") return "bg-emerald-600 text-white";
+  if (status === "unpaid") return "bg-rose-600 text-white";
   return "bg-slate-200 text-slate-600";
 }
 
 function cellSubTone(status) {
-  if (status === "paid") return "bg-green-50 border-green-100";
-  if (status === "unpaid") return "bg-red-50 border-red-100";
+  if (status === "paid") return "bg-emerald-50 border-emerald-200";
+  if (status === "unpaid") return "bg-rose-50 border-rose-200";
   return "bg-slate-50 border-slate-200";
 }
 
@@ -255,7 +256,7 @@ export default function Dashboard() {
     return map;
   }, [isManager, selectedPayment, apartmentsCount]);
 
-  // ✅ ADDED: суми за избраното начисление (само за manager)
+  // суми за избраното начисление (само за manager)
   const selectedPaymentAmounts = useMemo(() => {
     if (!isManager || !selectedPayment || !apartmentsCount) return null;
 
@@ -266,9 +267,7 @@ export default function Dashboard() {
 
     // ако начислението е за конкретен апартамент -> общо = amount
     // ако е за всички -> общо = apartmentsCount * amount
-    const totalDue = String(selectedPayment.apartment || "").trim()
-      ? amount
-      : apartmentsCount * amount;
+    const totalDue = String(selectedPayment.apartment || "").trim() ? amount : apartmentsCount * amount;
 
     return { collected, totalDue, amount, paidCount };
   }, [isManager, selectedPayment, apartmentsCount]);
@@ -281,327 +280,389 @@ export default function Dashboard() {
   if (!user) return null;
 
   return (
-    <div className="min-h-screen bg-sky-50 p-6">
-      <div className="max-w-6xl mx-auto space-y-4">
-        <PageHeader
-          title="Табло"
-          subtitle={
-            <>
-              Това е твоят контролен панел за входа — бърз преглед на най-важното.
-              <br />
-              {isManager
-                ? "Като домоуправител: следиш плащания, обяви и сигнали."
-                : "Като живущ: виждаш задължения, обяви и последни сигнали."}
-            </>
-          }
-          right={
-            <button
-              onClick={load}
-              className="rounded-2xl px-4 py-2 text-sm font-semibold border border-sky-200 text-sky-700 hover:bg-sky-50"
-            >
-              Обнови
-            </button>
-          }
-        />
+    <div className="min-h-screen flex flex-col bg-slate-50">
+      <div className="flex-1 p-6">
+        <div className="max-w-6xl mx-auto space-y-4">
+          <PageHeader
+            title="Табло"
+            subtitle={
+              <>
+                Това е твоят контролен панел за входа — бърз преглед на най-важното.
+                <br />
+                {isManager
+                  ? "Като домоуправител: следиш плащания, обяви и сигнали."
+                  : "Като живущ: виждаш задължения, обяви и последни сигнали."}
+              </>
+            }
+            right={
+              <button
+                onClick={load}
+                className="rounded-2xl px-4 py-2 text-sm font-semibold border border-slate-300 text-slate-900 hover:bg-slate-100 transition"
+              >
+                Обнови
+              </button>
+            }
+          />
 
-        <ErrorBox>{err}</ErrorBox>
+          <ErrorBox>{err}</ErrorBox>
 
-        <div className="rounded-3xl border border-sky-100 bg-white p-6 shadow-soft">
-          <div className="flex flex-wrap items-center gap-2">
-            <Pill tone={hasRoom ? "green" : "red"}>Стая: {hasRoom ? "активна" : "няма"}</Pill>
-            <Pill tone={approved ? "green" : "yellow"}>Достъп: {approved ? "одобрен" : "чака"}</Pill>
-            <Pill tone="sky">Роля: {user.role}</Pill>
-            <Pill tone="gray">
-              {user.city ? `${user.city} • ` : ""}
-              Блок {user.building || "—"} • Вход {user.entrance || "—"}{" "}
-              {user.apartment ? `• Ап ${user.apartment}` : ""}
-            </Pill>
-          </div>
-
-          <div className="text-xs text-slate-500 mt-3">
-            Ако нямаш стая или не си одобрен, таблото няма да зарежда плащания/обяви/сигнали (за да няма 403).
-          </div>
-        </div>
-
-        {/* NEW: Friendly gate screen */}
-        {!hasRoom ? (
-          <div className="rounded-3xl border border-yellow-100 bg-yellow-50 p-6">
-            <div className="text-lg font-black text-yellow-800">Първо влез в стая</div>
-            <div className="text-sm text-yellow-800 mt-2">
-              За да се появят плащания/обяви/сигнали, трябва да въведеш код за стая и апартамент.
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <Pill tone={hasRoom ? "green" : "red"}>Стая: {hasRoom ? "активна" : "няма"}</Pill>
+              <Pill tone={approved ? "green" : "yellow"}>Достъп: {approved ? "одобрен" : "чака"}</Pill>
+              <Pill tone="sky">Роля: {user.role}</Pill>
+              <Pill tone="gray">
+                {user.city ? `${user.city} • ` : ""}
+                Блок {user.building || "—"} • Вход {user.entrance || "—"} {user.apartment ? `• Ап ${user.apartment}` : ""}
+              </Pill>
             </div>
-            <Link
-              to="/room"
-              className="inline-block mt-4 rounded-2xl px-5 py-3 text-sm font-semibold bg-sky-600 text-white hover:bg-sky-700 shadow-soft"
-            >
-              Отиди към “Стая”
-            </Link>
-          </div>
-        ) : !approved ? (
-          <div className="rounded-3xl border border-yellow-100 bg-yellow-50 p-6">
-            <div className="text-lg font-black text-yellow-800">Чакаш одобрение</div>
-            <div className="text-sm text-yellow-800 mt-2">
-              Вече си подал заявка към стаята. Домоуправителят трябва да те одобри, за да видиш съдържанието.
+
+            <div className="text-xs text-slate-500 mt-3">
+              Ако нямаш стая или не си одобрен, таблото няма да зарежда плащания/обяви/сигнали (за да няма 403).
             </div>
-            <Link
-              to="/room"
-              className="inline-block mt-4 rounded-2xl px-5 py-3 text-sm font-semibold border border-yellow-200 text-yellow-900 hover:bg-yellow-100"
-            >
-              Виж статуса в “Стая”
-            </Link>
           </div>
-        ) : loading ? (
-          <div className="text-sm text-slate-500">Зареждане...</div>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {!isManager ? (
-              <div className="lg:col-span-2 space-y-4">
-                <div className="rounded-3xl border border-sky-100 bg-white p-6 shadow-soft">
-                  <div className="font-black text-slate-900">Моите задължения</div>
-                  <div className="text-sm text-slate-600 mt-2">
-                    Това са начисленията, които виждаш (общи + само за твоя апартамент).
-                  </div>
 
-                  {myUnpaid.length === 0 ? (
-                    <div className="mt-4 rounded-2xl border border-green-100 bg-green-50 p-4 text-sm text-green-700">
-                      Нямаш неплатени начисления (по данните в системата).
-                    </div>
-                  ) : (
-                    <div className="mt-4 space-y-3">
-                      <div className="text-sm">
-                        Неплатени: <b>{myUnpaid.length}</b>
-                      </div>
-                      {myUnpaid.slice(0, 5).map((p) => (
-                        <div key={p._id} className="rounded-3xl border border-slate-200 p-5">
-                          <div className="font-black text-slate-900">{p.description}</div>
-                          <div className="text-sm text-slate-600 mt-1">
-                            {p.apartment ? `Само за ап. ${p.apartment}` : "За всички апартаменти"} •{" "}
-                            {Number(p.amount).toFixed(2)} €
-                          </div>
-                          <div className="text-xs text-slate-500 mt-2">
-                            Период: {fmtDate(p.dateFrom)} → {fmtDate(p.dateTo)}
-                          </div>
-                          <div className="text-xs text-slate-500 mt-2">
-                            За плащане отвори секцията <b>Плащания</b>.
-                          </div>
-                        </div>
-                      ))}
-                      {myUnpaid.length > 5 && (
-                        <div className="text-xs text-slate-500">
-                          Показвам само първите 5. Останалите са в “Плащания”.
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                <div className="rounded-3xl border border-sky-100 bg-white p-6 shadow-soft">
-                  <div className="font-black text-slate-900">Последни обяви</div>
-                  <div className="text-sm text-slate-600 mt-2">Най-новите 3 обяви от домоуправителя.</div>
-
-                  {lastAnnouncements.length === 0 ? (
-                    <div className="text-sm text-slate-500 mt-4">Няма обяви.</div>
-                  ) : (
-                    <div className="mt-4 space-y-3">
-                      {lastAnnouncements.map((a) => (
-                        <div key={a._id} className="rounded-3xl border border-slate-200 p-5">
-                          <div className="font-black text-slate-900">{a.title}</div>
-                          <div className="text-xs text-slate-500 mt-1">{fmtDateTime(a.createdAt)}</div>
-                          <div className="text-sm text-slate-700 mt-3 line-clamp-3 whitespace-pre-wrap">
-                            {a.content}
-                          </div>
-                          <div className="text-xs text-slate-500 mt-3">За целия текст: секция “Обяви”.</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+          {/* Friendly gate screen */}
+          {!hasRoom ? (
+            <div className="rounded-3xl border border-amber-200 bg-amber-50 p-6">
+              <div className="text-lg font-black text-amber-900">Първо влез в стая</div>
+              <div className="text-sm text-amber-900/90 mt-2">
+                За да се появят плащания/обяви/сигнали, трябва да въведеш код за стая и апартамент.
               </div>
-            ) : (
-              <div className="lg:col-span-2 space-y-4">
-                <div className="rounded-3xl border border-sky-100 bg-white p-6 shadow-soft">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="font-black text-slate-900">Апартаменти: статус по начисление</div>
-                      <div className="text-sm text-slate-600 mt-2">
-                        Избираш месец и начисление и виждаш кои апартаменти са платили.
-                      </div>
-                      <div className="text-xs text-slate-500 mt-2">
-                        Зелен = платено • Червен = неплатено • Сив = не важи
-                      </div>
+              <Link
+                to="/room"
+                className="inline-flex items-center justify-center mt-4 rounded-2xl px-5 py-3 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 transition shadow-sm"
+              >
+                Отиди към “Стая”
+              </Link>
+            </div>
+          ) : !approved ? (
+            <div className="rounded-3xl border border-amber-200 bg-amber-50 p-6">
+              <div className="text-lg font-black text-amber-900">Чакаш одобрение</div>
+              <div className="text-sm text-amber-900/90 mt-2">
+                Вече си подал заявка към стаята. Домоуправителят трябва да те одобри, за да видиш съдържанието.
+              </div>
+              <Link
+                to="/room"
+                className="inline-flex items-center justify-center mt-4 rounded-2xl px-5 py-3 text-sm font-semibold border border-amber-300 text-amber-900 hover:bg-amber-100 transition"
+              >
+                Виж статуса в “Стая”
+              </Link>
+            </div>
+          ) : loading ? (
+            <div className="text-sm text-slate-500">Зареждане...</div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {!isManager ? (
+                <div className="lg:col-span-2 space-y-4">
+                  <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <div className="font-black text-slate-900">Моите задължения</div>
+                    <div className="text-sm text-slate-600 mt-2">
+                      Това са начисленията, които виждаш (общи + само за твоя апартамент).
                     </div>
 
-                    <div className="min-w-[300px] space-y-2">
-                      <div>
-                        <label className="block text-xs text-slate-500 mb-1">Месец</label>
-                        <select
-                          className="w-full border rounded-2xl px-4 py-3 text-sm"
-                          value={selectedMonth}
-                          onChange={(e) => {
-                            setSelectedMonth(e.target.value);
-                            setSelectedPaymentId("");
-                            setActiveApt(null);
-                          }}
-                        >
-                          {monthOptions.length === 0 ? (
-                            <option value="">Няма данни</option>
-                          ) : (
-                            monthOptions.map((k) => (
-                              <option key={k} value={k}>
-                                {monthLabel(k)}
-                              </option>
-                            ))
-                          )}
-                        </select>
+                    {myUnpaid.length === 0 ? (
+                      <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+                        Нямаш неплатени начисления (по данните в системата).
                       </div>
-
-                      <div>
-                        <label className="block text-xs text-slate-500 mb-1">Избери начисление</label>
-                        <select
-                          className="w-full border rounded-2xl px-4 py-3 text-sm"
-                          value={selectedPaymentId}
-                          onChange={(e) => {
-                            setSelectedPaymentId(e.target.value);
-                            setActiveApt(null);
-                          }}
-                        >
-                          {managerPaymentList.length === 0 ? (
-                            <option value="">Няма начисления за месеца</option>
-                          ) : (
-                            managerPaymentList.map((p) => (
-                              <option key={p._id} value={p._id}>
-                                {p.description} • {Number(p.amount).toFixed(2)} €
-                                {p.apartment ? ` • (ап. ${p.apartment})` : " • (за всички)"}
-                              </option>
-                            ))
-                          )}
-                        </select>
-
-                        <div className="text-xs text-slate-500 mt-2">
-                          Период: {fmtDate(selectedPayment?.dateFrom)} → {fmtDate(selectedPayment?.dateTo)}
+                    ) : (
+                      <div className="mt-4 space-y-3">
+                        <div className="text-sm">
+                          Неплатени: <b>{myUnpaid.length}</b>
                         </div>
-
-                        {/* ✅ ADDED: събрано/общо за конкретното начисление */}
-                        {selectedPaymentAmounts && (
-                          <div className="text-xs text-slate-500 mt-2">
-                            Събрано: <b>{Number(selectedPaymentAmounts.collected).toFixed(2)} €</b> от{" "}
-                            <b>{Number(selectedPaymentAmounts.totalDue).toFixed(2)} €</b>
+                        {myUnpaid.slice(0, 5).map((p) => (
+                          <div key={p._id} className="rounded-3xl border border-slate-200 p-5 bg-white shadow-sm">
+                            <div className="font-black text-slate-900">{p.description}</div>
+                            <div className="text-sm text-slate-600 mt-1">
+                              {p.apartment ? `Само за ап. ${p.apartment}` : "За всички апартаменти"} •{" "}
+                              {Number(p.amount).toFixed(2)} €
+                            </div>
+                            <div className="text-xs text-slate-500 mt-2">
+                              Период: {fmtDate(p.dateFrom)} → {fmtDate(p.dateTo)}
+                            </div>
+                            <div className="text-xs text-slate-500 mt-2">
+                              За плащане отвори секцията <b>Плащания</b>.
+                            </div>
+                          </div>
+                        ))}
+                        {myUnpaid.length > 5 && (
+                          <div className="text-xs text-slate-500">
+                            Показвам само първите 5. Останалите са в “Плащания”.
                           </div>
                         )}
                       </div>
-                    </div>
+                    )}
                   </div>
 
-                  {!apartmentsCount ? (
-                    <div className="mt-4 rounded-2xl border border-yellow-100 bg-yellow-50 p-4 text-sm text-yellow-700">
-                      Няма зададен брой апартаменти за входа. Задай го в “Стая”.
-                    </div>
-                  ) : !selectedPayment ? (
-                    <div className="mt-4 text-sm text-slate-500">Няма начисление за показване.</div>
-                  ) : (
-                    <div className="mt-5 grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 gap-2">
-                      {Array.from({ length: apartmentsCount }, (_, i) => {
-                        const apt = String(i + 1);
-                        const info = aptStatus?.[apt] || { status: "na", paidBy: [] };
-                        const status = info.status;
+                  <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <div className="font-black text-slate-900">Последни обяви</div>
+                    <div className="text-sm text-slate-600 mt-2">Най-новите 3 обяви от домоуправителя.</div>
 
-                        return (
-                          <button
-                            key={apt}
-                            type="button"
-                            onClick={() => setActiveApt(apt)}
-                            className={`relative rounded-2xl px-2 py-3 text-sm font-black transition hover:scale-[1.02] ${cellTone(
-                              status
-                            )}`}
-                          >
-                            {apt}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
+                    {lastAnnouncements.length === 0 ? (
+                      <div className="text-sm text-slate-500 mt-4">Няма обяви.</div>
+                    ) : (
+                      <div className="mt-4 space-y-3">
+                        {lastAnnouncements.map((a) => (
+                          <div key={a._id} className="rounded-3xl border border-slate-200 p-5 bg-white shadow-sm">
+                            <div className="font-black text-slate-900">{a.title}</div>
+                            <div className="text-xs text-slate-500 mt-1">{fmtDateTime(a.createdAt)}</div>
+                            <div className="text-sm text-slate-700 mt-3 line-clamp-3 whitespace-pre-wrap leading-relaxed">
+                              {a.content}
+                            </div>
+                            <div className="text-xs text-slate-500 mt-3">За целия текст: секция “Обяви”.</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
 
-                  {apartmentsCount && selectedPayment && activeApt && (
-                    <div className={`mt-5 rounded-3xl border p-5 ${cellSubTone(aptStatus?.[activeApt]?.status)}`}>
-                      <div className="flex items-start justify-between gap-3">
+                  <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <div className="font-black text-slate-900">Последни сигнали</div>
+                    <div className="text-sm text-slate-600 mt-2">Последните 3 сигнала от твоя вход.</div>
+
+                    {lastSignals.length === 0 ? (
+                      <div className="text-sm text-slate-500 mt-4">Няма сигнали.</div>
+                    ) : (
+                      <div className="mt-4 space-y-3">
+                        {lastSignals.map((s) => (
+                          <div key={s._id} className="rounded-3xl border border-slate-200 p-5 bg-white shadow-sm">
+                            <div className="font-black text-slate-900">{s.title || "Сигнал"}</div>
+                            <div className="text-xs text-slate-500 mt-1">{fmtDateTime(s.createdAt)}</div>
+                            <div className="text-sm text-slate-700 mt-3 line-clamp-3 whitespace-pre-wrap leading-relaxed">
+                              {s.description || s.content || ""}
+                            </div>
+                            <div className="text-xs text-slate-500 mt-3">За детайли: секция “Сигнали”.</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="lg:col-span-2 space-y-4">
+                  <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="font-black text-slate-900">Апартаменти: статус по начисление</div>
+                        <div className="text-sm text-slate-600 mt-2">
+                          Избираш месец и начисление и виждаш кои апартаменти са платили.
+                        </div>
+                        <div className="text-xs text-slate-500 mt-2">
+                          Зелен = платено • Червен = неплатено • Сив = не важи
+                        </div>
+                      </div>
+
+                      <div className="min-w-[300px] space-y-2">
                         <div>
-                          <div className="font-black text-slate-900">Детайл за ап. {activeApt}</div>
-                          <div className="text-sm text-slate-700 mt-1">
-                            Начисление: <b>{selectedPayment.description}</b> •{" "}
-                            {Number(selectedPayment.amount).toFixed(2)} €
-                          </div>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1">Месец</label>
+                          <select
+                            className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
+                            value={selectedMonth}
+                            onChange={(e) => {
+                              setSelectedMonth(e.target.value);
+                              setSelectedPaymentId("");
+                              setActiveApt(null);
+                            }}
+                          >
+                            {monthOptions.length === 0 ? (
+                              <option value="">Няма данни</option>
+                            ) : (
+                              monthOptions.map((k) => (
+                                <option key={k} value={k}>
+                                  {monthLabel(k)}
+                                </option>
+                              ))
+                            )}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1">Избери начисление</label>
+                          <select
+                            className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
+                            value={selectedPaymentId}
+                            onChange={(e) => {
+                              setSelectedPaymentId(e.target.value);
+                              setActiveApt(null);
+                            }}
+                          >
+                            {managerPaymentList.length === 0 ? (
+                              <option value="">Няма начисления за месеца</option>
+                            ) : (
+                              managerPaymentList.map((p) => (
+                                <option key={p._id} value={p._id}>
+                                  {p.description} • {Number(p.amount).toFixed(2)} €
+                                  {p.apartment ? ` • (ап. ${p.apartment})` : " • (за всички)"}
+                                </option>
+                              ))
+                            )}
+                          </select>
+
                           <div className="text-xs text-slate-500 mt-2">
-                            Период: {fmtDate(selectedPayment.dateFrom)} → {fmtDate(selectedPayment.dateTo)}
+                            Период: {fmtDate(selectedPayment?.dateFrom)} → {fmtDate(selectedPayment?.dateTo)}
                           </div>
-                        </div>
 
-                        <button
-                          onClick={() => setActiveApt(null)}
-                          className="rounded-2xl px-3 py-2 text-xs font-semibold border border-slate-200 hover:bg-slate-50"
-                        >
-                          Затвори
-                        </button>
-                      </div>
-
-                      {aptStatus?.[activeApt]?.status === "na" ? (
-                        <div className="mt-3 text-sm text-slate-600">
-                          Това начисление е за друг апартамент ({selectedPayment.apartment}). Този апартамент не участва.
+                          {selectedPaymentAmounts && (
+                            <div className="text-xs text-slate-500 mt-2">
+                              Събрано: <b>{Number(selectedPaymentAmounts.collected).toFixed(2)} €</b> от{" "}
+                              <b>{Number(selectedPaymentAmounts.totalDue).toFixed(2)} €</b>
+                            </div>
+                          )}
                         </div>
-                      ) : aptStatus?.[activeApt]?.status === "paid" ? (
-                        <div className="mt-4 rounded-2xl border border-green-200 bg-white p-4 text-sm text-green-700">
-                          Платено
-                        </div>
-                      ) : (
-                        <div className="mt-4 rounded-2xl border border-red-200 bg-white p-4 text-sm text-red-700">
-                          Неплатено
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                <div className="rounded-3xl border border-sky-100 bg-white p-6 shadow-soft">
-                  <div className="font-black text-slate-900">Бърз преглед</div>
-                  <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
-                    <div className="rounded-3xl border border-slate-200 p-5">
-                      <div className="text-xs text-slate-500">Баланс</div>
-                      <div className="text-2xl font-black text-slate-900">
-                        {roomBalance === null ? "—" : `${roomBalance.toFixed(2)} €`}
                       </div>
                     </div>
-                    <div className="rounded-3xl border border-slate-200 p-5">
-                      <div className="text-xs text-slate-500">Начисления</div>
-                      <div className="text-2xl font-black text-slate-900">{payments.length}</div>
-                    </div>
-                    <div className="rounded-3xl border border-slate-200 p-5">
-                      <div className="text-xs text-slate-500">Обяви</div>
-                      <div className="text-2xl font-black text-slate-900">{announcements.length}</div>
-                    </div>
-                    <div className="rounded-3xl border border-slate-200 p-5">
-                      <div className="text-xs text-slate-500">Сигнали</div>
-                      <div className="text-2xl font-black text-slate-900">{signals.length}</div>
+
+                    {!apartmentsCount ? (
+                      <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                        Няма зададен брой апартаменти за входа. Задай го в “Стая”.
+                      </div>
+                    ) : !selectedPayment ? (
+                      <div className="mt-4 text-sm text-slate-500">Няма начисление за показване.</div>
+                    ) : (
+                      <div className="mt-5 grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 gap-2">
+                        {Array.from({ length: apartmentsCount }, (_, i) => {
+                          const apt = String(i + 1);
+                          const info = aptStatus?.[apt] || { status: "na", paidBy: [] };
+                          const status = info.status;
+
+                          return (
+                            <button
+                              key={apt}
+                              type="button"
+                              onClick={() => setActiveApt(apt)}
+                              className={`relative rounded-2xl px-2 py-3 text-sm font-black transition hover:scale-[1.02] ${cellTone(
+                                status
+                              )}`}
+                            >
+                              {apt}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {apartmentsCount && selectedPayment && activeApt && (
+                      <div className={`mt-5 rounded-3xl border p-5 ${cellSubTone(aptStatus?.[activeApt]?.status)}`}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="font-black text-slate-900">Детайл за ап. {activeApt}</div>
+                            <div className="text-sm text-slate-700 mt-1">
+                              Начисление: <b>{selectedPayment.description}</b> • {Number(selectedPayment.amount).toFixed(2)} €
+                            </div>
+                            <div className="text-xs text-slate-500 mt-2">
+                              Период: {fmtDate(selectedPayment.dateFrom)} → {fmtDate(selectedPayment.dateTo)}
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => setActiveApt(null)}
+                            className="rounded-2xl px-3 py-2 text-xs font-semibold border border-slate-300 text-slate-900 hover:bg-white transition"
+                          >
+                            Затвори
+                          </button>
+                        </div>
+
+                        {aptStatus?.[activeApt]?.status === "na" ? (
+                          <div className="mt-3 text-sm text-slate-600">
+                            Това начисление е за друг апартамент ({selectedPayment.apartment}). Този апартамент не участва.
+                          </div>
+                        ) : aptStatus?.[activeApt]?.status === "paid" ? (
+                          <div className="mt-4 rounded-2xl border border-emerald-200 bg-white p-4 text-sm text-emerald-900">
+                            Платено
+                          </div>
+                        ) : (
+                          <div className="mt-4 rounded-2xl border border-rose-200 bg-white p-4 text-sm text-rose-900">
+                            Неплатено
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <div className="font-black text-slate-900">Бърз преглед</div>
+                    <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
+                      <div className="rounded-3xl border border-slate-200 p-5">
+                        <div className="text-xs text-slate-500">Баланс</div>
+                        <div className="text-2xl font-black text-slate-900">
+                          {roomBalance === null ? "—" : `${roomBalance.toFixed(2)} €`}
+                        </div>
+                      </div>
+                      <div className="rounded-3xl border border-slate-200 p-5">
+                        <div className="text-xs text-slate-500">Начисления</div>
+                        <div className="text-2xl font-black text-slate-900">{payments.length}</div>
+                      </div>
+                      <div className="rounded-3xl border border-slate-200 p-5">
+                        <div className="text-xs text-slate-500">Обяви</div>
+                        <div className="text-2xl font-black text-slate-900">{announcements.length}</div>
+                      </div>
+                      <div className="rounded-3xl border border-slate-200 p-5">
+                        <div className="text-xs text-slate-500">Сигнали</div>
+                        <div className="text-2xl font-black text-slate-900">{signals.length}</div>
+                      </div>
                     </div>
                   </div>
                 </div>
+              )}
+
+              <div className="space-y-4">
+                <HelpCard title="Как да ползваш таблото">
+                  <ul className="list-disc pl-5 mt-2 space-y-2">
+                    <li>Първо виж задължения/сигнали.</li>
+                    <li>Чети обявите редовно.</li>
+                    <li>Ако липсва нещо — натисни “Обнови”.</li>
+                  </ul>
+                </HelpCard>
+
+                <HelpCard title="Бърз навик">
+                  Ако си живущ: проверявай таблото 10 секунди — ще знаеш дали има неплатено/обява/сигнал.
+                </HelpCard>
+
+                <HelpCard title="Бърза навигация">
+                  <div className="mt-2 grid grid-cols-1 gap-2">
+                    <Link
+                      to="/payments"
+                      className="rounded-2xl px-4 py-3 text-sm font-semibold border border-slate-300 text-slate-900 hover:bg-slate-100 transition text-center"
+                    >
+                      Плащания
+                    </Link>
+                    <Link
+                      to="/announcements"
+                      className="rounded-2xl px-4 py-3 text-sm font-semibold border border-slate-300 text-slate-900 hover:bg-slate-100 transition text-center"
+                    >
+                      Обяви
+                    </Link>
+                    <Link
+                      to="/signals"
+                      className="rounded-2xl px-4 py-3 text-sm font-semibold border border-slate-300 text-slate-900 hover:bg-slate-100 transition text-center"
+                    >
+                      Сигнали
+                    </Link>
+                    <Link
+                      to="/reports"
+                      className="rounded-2xl px-4 py-3 text-sm font-semibold border border-slate-300 text-slate-900 hover:bg-slate-100 transition text-center"
+                    >
+                      Справки
+                    </Link>
+                    <Link
+                      to="/room"
+                      className="rounded-2xl px-4 py-3 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 transition shadow-sm text-center"
+                    >
+                      Стая
+                    </Link>
+                  </div>
+
+                  <div className="mt-3 text-xs text-slate-500">
+                    Тези бутони са за удобство. Модулите се показват според достъп/одобрение/активност на входа.
+                  </div>
+                </HelpCard>
               </div>
-            )}
-
-            <div className="space-y-4">
-              <HelpCard title="Как да ползваш таблото">
-                <ul className="list-disc pl-5 mt-2 space-y-2">
-                  <li>Първо виж задължения/сигнали.</li>
-                  <li>Чети обявите редовно.</li>
-                  <li>Ако липсва нещо — натисни “Обнови”.</li>
-                </ul>
-              </HelpCard>
-
-              <HelpCard title="Бърз навик">
-                Ако си живущ: проверявай таблото 10 секунди — ще знаеш дали има неплатено/обява/сигнал.
-              </HelpCard>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
+
+      
     </div>
   );
 }

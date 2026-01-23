@@ -2,12 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../store/auth";
 import api from "../lib/api";
+import SiteFooter from "../components/SiteFooter";
 
 function InfoCard({ icon, title, desc }) {
   return (
-    <div className="rounded-3xl border border-sky-100 bg-white p-5 shadow-soft hover:shadow-md transition">
+    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm hover:shadow-md transition">
       <div className="flex items-start gap-3">
-        <div className="h-11 w-11 rounded-2xl bg-sky-100 text-sky-700 flex items-center justify-center text-lg shadow-sm">
+        <div className="h-11 w-11 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center text-base shadow-sm border border-slate-200">
           {icon}
         </div>
         <div>
@@ -81,7 +82,7 @@ export default function Login() {
       }
 
       const res = await api.post("/api/auth/forgot-password", { email });
-      setForgotMsg(res?.data?.message || "✅ Ако имейлът съществува, ще получиш линк.");
+      setForgotMsg(res?.data?.message || "Ако имейлът съществува, ще получиш линк.");
     } catch (e) {
       setForgotErr(e?.response?.data?.message || "Грешка при заявка за смяна на парола");
     } finally {
@@ -96,7 +97,7 @@ export default function Login() {
       setVerifyLoading(true);
 
       const res = await api.post("/api/auth/resend-verify-email");
-      setVerifyMsg(res?.data?.message || "✅ Изпратен е имейл за потвърждение.");
+      setVerifyMsg(res?.data?.message || "Изпратен е имейл за потвърждение.");
       await fetchUser();
     } catch (e) {
       setVerifyErr(e?.response?.data?.message || "Грешка при изпращане на имейл за потвърждение");
@@ -109,13 +110,13 @@ export default function Login() {
   const canResendVerify = !!token && !!user && !emailVerified;
 
   return (
-    <div className="min-h-screen bg-sky-50">
+    <div className="min-h-screen flex flex-col bg-slate-50">
       {/* TOP HEADER */}
-      <header className="sticky top-0 z-20 bg-white/75 backdrop-blur border-b border-sky-100">
+      <header className="sticky top-0 z-20 bg-white/80 backdrop-blur border-b border-slate-200">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
           <Link to="/" className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-2xl bg-sky-600 flex items-center justify-center shadow-soft">
-              <span className="text-white font-black text-lg">ОД</span>
+            <div className="h-10 w-10 rounded-2xl bg-slate-900 flex items-center justify-center shadow-sm">
+              <span className="text-white font-black text-lg">OD</span>
             </div>
             <div>
               <div className="font-semibold text-slate-900 leading-tight">Онлайн Домоуправител</div>
@@ -126,7 +127,7 @@ export default function Login() {
           <div className="flex items-center gap-2">
             <Link
               to="/register"
-              className="rounded-2xl px-5 py-2.5 text-sm font-semibold bg-sky-600 text-white hover:bg-sky-700 transition shadow-soft"
+              className="rounded-2xl px-5 py-2.5 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 transition shadow-sm"
             >
               Регистрация
             </Link>
@@ -135,246 +136,243 @@ export default function Login() {
       </header>
 
       {/* BODY */}
-      <div className="max-w-6xl mx-auto px-4 py-10">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-start">
-          {/* LEFT: FORM */}
-          <div className="rounded-3xl border border-sky-100 bg-white shadow-soft overflow-hidden">
-            <div className="p-6 border-b border-sky-100">
-              <div className="inline-flex items-center gap-2 text-xs px-3 py-1 rounded-full bg-sky-100 text-sky-700 border border-sky-200">
-                🔐 Вход в системата
+      <div className="flex-1">
+        <div className="max-w-6xl mx-auto px-4 py-10">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-start">
+            {/* LEFT: FORM */}
+            <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+              <div className="p-6 border-b border-slate-200">
+                <div className="inline-flex items-center gap-2 text-xs px-3 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                  Вход в системата
+                </div>
+                <h1 className="text-2xl sm:text-3xl font-black text-slate-900 mt-3">Добре дошъл обратно</h1>
+                <p className="text-sm text-slate-600 mt-2 leading-relaxed">
+                  Влез, за да управляваш стаята на входа: обяви, начисления, сигнали и справки.
+                </p>
               </div>
-              <h1 className="text-2xl sm:text-3xl font-black text-slate-900 mt-3">Добре дошъл обратно</h1>
-              <p className="text-sm text-slate-600 mt-2 leading-relaxed">
-                Влез, за да управляваш стаята на входа: обяви, начисления, сигнали и справки.
-              </p>
-            </div>
 
-            <div className="p-6">
-              {/* ✅ Verified banner */}
-              {verified && (
-                <div className="mb-4 text-sm text-green-700 bg-green-50 border border-green-100 rounded-2xl p-3">
-                  ✅ Имейлът е потвърден. Можеш да влезеш.
-                </div>
-              )}
+              <div className="p-6">
+                {/* Verified banner */}
+                {verified && (
+                  <div className="mb-4 text-sm text-emerald-900 bg-emerald-50 border border-emerald-200 rounded-2xl p-3">
+                    Имейлът е потвърден. Можеш да влезеш.
+                  </div>
+                )}
 
-              {/* ✅ Reset hint if arrived with token/email */}
-              {showResetHint && (
-                <div className="mb-4 text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-2xl p-3">
-                  🔑 Имаш линк за смяна на парола. Отиди на{" "}
-                  <Link
-                    className="font-semibold text-sky-700 hover:underline"
-                    to={`/reset-password?token=${encodeURIComponent(presetToken)}&email=${encodeURIComponent(
-                      presetEmail
-                    )}`}
+                {/* Reset hint if arrived with token/email */}
+                {showResetHint && (
+                  <div className="mb-4 text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-2xl p-3">
+                    Имаш линк за смяна на парола. Отиди на{" "}
+                    <Link
+                      className="font-semibold text-slate-900 underline underline-offset-2 hover:opacity-80"
+                      to={`/reset-password?token=${encodeURIComponent(presetToken)}&email=${encodeURIComponent(
+                        presetEmail
+                      )}`}
+                    >
+                      Reset Password
+                    </Link>
+                    .
+                  </div>
+                )}
+
+                {/* Auth error */}
+                {error && (
+                  <div className="mb-4 text-sm text-rose-900 bg-rose-50 border border-rose-200 rounded-2xl p-3">
+                    {error}
+                  </div>
+                )}
+
+                <form onSubmit={onSubmit} className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Имейл</label>
+                    <input
+                      className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
+                      placeholder="example@email.com"
+                      value={form.email}
+                      onChange={(e) => setForm({ ...form, email: e.target.value })}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Парола</label>
+                    <input
+                      type="password"
+                      className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
+                      placeholder="••••••••"
+                      value={form.password}
+                      onChange={(e) => setForm({ ...form, password: e.target.value })}
+                      required
+                    />
+                  </div>
+
+                  <button
+                    disabled={loading}
+                    className="w-full rounded-2xl py-3.5 bg-slate-900 text-white font-semibold text-sm hover:bg-slate-800 transition shadow-sm disabled:opacity-60"
                   >
-                    Reset Password
-                  </Link>
-                  .
-                </div>
-              )}
+                    {loading ? "Влизане..." : "Влез"}
+                  </button>
 
-              {/* ✅ Auth error */}
-              {error && (
-                <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-100 rounded-2xl p-3">
-                  {error}
-                </div>
-              )}
+                  <div className="text-sm text-slate-600 text-center pt-2">
+                    Нямаш акаунт?{" "}
+                    <Link to="/register" className="font-semibold text-slate-900 underline underline-offset-2 hover:opacity-80">
+                      Регистрация
+                    </Link>
+                  </div>
+                </form>
 
-              <form onSubmit={onSubmit} className="space-y-3">
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">Имейл</label>
-                  <input
-                    className="w-full border border-sky-100 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
-                    placeholder="example@email.com"
-                    value={form.email}
-                    onChange={(e) => setForm({ ...form, email: e.target.value })}
-                    required
-                  />
-                </div>
+                {/* RESEND VERIFY (optional, shows only if logged and not verified) */}
+                {canResendVerify && (
+                  <div className="mt-6 rounded-3xl border border-slate-200 bg-white p-5">
+                    <div className="font-semibold text-slate-900">Потвърждение на имейл</div>
+                    <div className="text-sm text-slate-600 mt-1">
+                      Имейлът ти е <b className="text-amber-700">непотвърден</b>. За домоуправители е силно препоръчително.
+                    </div>
 
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">Парола</label>
-                  <input
-                    type="password"
-                    className="w-full border border-sky-100 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
-                    placeholder="••••••••"
-                    value={form.password}
-                    onChange={(e) => setForm({ ...form, password: e.target.value })}
-                    required
-                  />
-                </div>
+                    {verifyErr && (
+                      <div className="mt-3 text-sm text-rose-900 bg-rose-50 border border-rose-200 rounded-2xl p-3">
+                        {verifyErr}
+                      </div>
+                    )}
+                    {verifyMsg && (
+                      <div className="mt-3 text-sm text-emerald-900 bg-emerald-50 border border-emerald-200 rounded-2xl p-3">
+                        {verifyMsg}
+                      </div>
+                    )}
 
-                <button
-                  disabled={loading}
-                  className="w-full rounded-2xl py-3.5 bg-sky-600 text-white font-semibold text-sm hover:bg-sky-700 transition shadow-soft disabled:opacity-60"
-                >
-                  {loading ? "Влизане..." : "Влез"}
-                </button>
+                    <button
+                      onClick={resendVerify}
+                      disabled={verifyLoading}
+                      className="mt-3 w-full rounded-2xl py-3 border border-slate-300 text-slate-900 font-semibold text-sm hover:bg-slate-50 transition disabled:opacity-60"
+                    >
+                      {verifyLoading ? "Изпращане..." : "Изпрати имейл за потвърждение"}
+                    </button>
 
-                <div className="text-sm text-slate-600 text-center pt-2">
-                  Нямаш акаунт?{" "}
-                  <Link to="/register" className="font-semibold text-sky-700 hover:underline">
-                    Регистрация
-                  </Link>
-                </div>
-              </form>
+                    <div className="text-xs text-slate-500 mt-2">
+                      Провери и папка <b>Spam</b>/<b>Promotions</b>.
+                    </div>
+                  </div>
+                )}
 
-              {/* ✅ RESEND VERIFY (optional, shows only if logged and not verified) */}
-              {canResendVerify && (
-                <div className="mt-6 rounded-3xl border border-sky-100 bg-white p-5">
-                  <div className="font-semibold text-slate-900">📩 Потвърждение на имейл</div>
+                {/* FORGOT PASSWORD */}
+                <div className="mt-6 rounded-3xl border border-slate-200 bg-white p-5">
+                  <div className="font-semibold text-slate-900">Забравена парола?</div>
                   <div className="text-sm text-slate-600 mt-1">
-                    Имейлът ти е <b className="text-yellow-700">непотвърден</b>. За домоуправители е силно препоръчително.
+                    Въведи имейл и ще изпратим линк за смяна (валиден 30 минути).
                   </div>
 
-                  {verifyErr && (
-                    <div className="mt-3 text-sm text-red-700 bg-red-50 border border-red-100 rounded-2xl p-3">
-                      {verifyErr}
-                    </div>
-                  )}
-                  {verifyMsg && (
-                    <div className="mt-3 text-sm text-green-700 bg-green-50 border border-green-100 rounded-2xl p-3">
-                      {verifyMsg}
+                  {forgotErr && (
+                    <div className="mt-3 text-sm text-rose-900 bg-rose-50 border border-rose-200 rounded-2xl p-3">
+                      {forgotErr}
                     </div>
                   )}
 
-                  <button
-                    onClick={resendVerify}
-                    disabled={verifyLoading}
-                    className="mt-3 w-full rounded-2xl py-3 border border-sky-200 text-sky-700 font-semibold text-sm hover:bg-sky-50 transition disabled:opacity-60"
+                  {forgotMsg && (
+                    <div className="mt-3 text-sm text-emerald-900 bg-emerald-50 border border-emerald-200 rounded-2xl p-3">
+                      {forgotMsg}
+                    </div>
+                  )}
+
+                  <div className="mt-3 space-y-2">
+                    <input
+                      className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
+                      placeholder="example@email.com"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                    />
+                    <button
+                      onClick={sendForgot}
+                      disabled={forgotLoading}
+                      className="w-full rounded-2xl py-3 bg-slate-900 text-white font-semibold text-sm hover:bg-slate-800 transition disabled:opacity-60"
+                    >
+                      {forgotLoading ? "Изпращане..." : "Изпрати линк за смяна"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* RIGHT: EXPLANATION */}
+            <div className="space-y-4">
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="text-xs text-slate-500">Какво получаваш</div>
+                <div className="text-2xl font-bold mt-1 text-slate-900">Ред и контрол във входа</div>
+                <p className="text-sm text-slate-600 mt-2 leading-relaxed">
+                  Всичко е организирано по стая (вход). Влизане с код + одобрение и ясна история на действията.
+                </p>
+
+                <div className="mt-4 flex flex-wrap gap-2 text-xs">
+                  {["Обяви", "Плащания", "Сигнали", "Справки", "Одобрение"].map((x) => (
+                    <span key={x} className="px-3 py-1 rounded-full bg-slate-50 border border-slate-200 text-slate-700">
+                      {x}
+                    </span>
+                  ))}
+                </div>
+
+                <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+                  Сигурността е проста: код за стая + одобрение. Данните не се смесват между различни входове.
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <InfoCard
+                  icon="1"
+                  title="Само за вашия вход"
+                  desc="Няма смесване между блокове и входове. Данните са изолирани по roomId."
+                />
+                <InfoCard
+                  icon="2"
+                  title="Достъп след одобрение"
+                  desc="Живущите не виждат нищо, докато домоуправителят не ги одобри."
+                />
+                <InfoCard
+                  icon="3"
+                  title="Такси и начисления"
+                  desc="Домоуправителят създава начисления по вход/апартамент, живущите виждат своето."
+                />
+                <InfoCard
+                  icon="4"
+                  title="Ясни справки"
+                  desc="Филтри, периоди, суми — всичко подредено и полезно."
+                />
+              </div>
+
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="text-sm font-semibold text-slate-900">Абонамент</div>
+                <div className="text-2xl font-black text-slate-900 mt-1">1 месец безплатно</div>
+                <div className="text-sm text-slate-600 mt-1 leading-relaxed">
+                  След тест периода: <b>1 € / апартамент / месец</b>.
+                </div>
+
+                <div className="mt-4 flex gap-2">
+                  <Link
+                    to="/register"
+                    className="rounded-2xl px-5 py-3 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 transition shadow-sm"
                   >
-                    {verifyLoading ? "Изпращане..." : "Изпрати имейл за потвърждение"}
-                  </button>
-
-                  <div className="text-xs text-slate-500 mt-2">
-                    Провери и папка <b>Spam</b>/<b>Promotions</b>.
-                  </div>
-                </div>
-              )}
-
-              {/* ✅ FORGOT PASSWORD */}
-              <div className="mt-6 rounded-3xl border border-sky-100 bg-white p-5">
-                <div className="font-semibold text-slate-900">Забравена парола?</div>
-                <div className="text-sm text-slate-600 mt-1">
-                  Въведи имейл и ще изпратим линк за смяна (валиден 30 минути).
-                </div>
-
-                {forgotErr && (
-                  <div className="mt-3 text-sm text-red-700 bg-red-50 border border-red-100 rounded-2xl p-3">
-                    {forgotErr}
-                  </div>
-                )}
-
-                {forgotMsg && (
-                  <div className="mt-3 text-sm text-green-700 bg-green-50 border border-green-100 rounded-2xl p-3">
-                    {forgotMsg}
-                  </div>
-                )}
-
-                <div className="mt-3 space-y-2">
-                  <input
-                    className="w-full border border-sky-100 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
-                    placeholder="example@email.com"
-                    value={forgotEmail}
-                    onChange={(e) => setForgotEmail(e.target.value)}
-                  />
-                  <button
-                    onClick={sendForgot}
-                    disabled={forgotLoading}
-                    className="w-full rounded-2xl py-3 bg-slate-900 text-white font-semibold text-sm hover:bg-slate-800 transition disabled:opacity-60"
+                    Направи акаунт
+                  </Link>
+                  <Link
+                    to="/"
+                    className="rounded-2xl px-5 py-3 text-sm font-semibold border border-slate-300 text-slate-900 hover:bg-slate-100 transition"
                   >
-                    {forgotLoading ? "Изпращане..." : "Изпрати линк за смяна"}
-                  </button>
+                    Виж началото
+                  </Link>
+                </div>
+
+                <div className="mt-4 text-xs text-slate-500">
+                  Таксуването се определя от броя апартаменти във входа. Всички суми се показват в EUR.
                 </div>
               </div>
-            </div>
-          </div>
 
-          {/* RIGHT: EXPLANATION */}
-          <div className="space-y-4">
-            <div className="rounded-3xl bg-gradient-to-r from-sky-700 via-sky-600 to-sky-700 text-white p-6 shadow-soft">
-              <div className="text-xs text-sky-50/90">Какво получаваш</div>
-              <div className="text-2xl font-bold mt-1">Ред и контрол във входа</div>
-              <p className="text-sm text-sky-50/90 mt-2 leading-relaxed">
-                Всичко е организирано по стая (вход). Влизане с код + одобрение и край на хаоса.
-              </p>
-
-              <div className="mt-4 flex flex-wrap gap-2 text-xs">
-                {["Обяви", "Плащания", "Сигнали", "Справки", "Одобрение"].map((x) => (
-                  <span key={x} className="px-3 py-1 rounded-full bg-white/15 border border-white/25">
-                    {x}
-                  </span>
-                ))}
+              <div className="text-xs text-slate-500">
+                Ако имаш проблем с входа, провери дали имейлът е изписан правилно и дали профилът е одобрен от домоуправителя.
               </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <InfoCard
-                icon="🔒"
-                title="Само за вашия вход"
-                desc="Няма смесване между блокове и входове. Данните са изолирани по roomId."
-              />
-              <InfoCard
-                icon="✅"
-                title="Достъп след одобрение"
-                desc="Живущите не виждат нищо, докато домоуправителят не ги одобри."
-              />
-              <InfoCard
-                icon="💳"
-                title="Такси и начисления"
-                desc="Домоуправителят създава начисления по вход/апартамент, живущите виждат своето."
-              />
-              <InfoCard
-                icon="📊"
-                title="Ясни справки"
-                desc="Филтри, периоди, суми — всичко подредено и полезно."
-              />
-            </div>
-
-            <div className="rounded-3xl border border-sky-100 bg-white p-6 shadow-soft">
-              <div className="text-sm font-semibold text-sky-700">Абонамент</div>
-              <div className="text-2xl font-black text-slate-900 mt-1">1 месец безплатно</div>
-              <div className="text-sm text-slate-600 mt-1 leading-relaxed">
-                След тест периода: <b>1 лв / апартамент / вход</b> на месец.
-              </div>
-
-              <div className="mt-4 flex gap-2">
-                <Link
-                  to="/register"
-                  className="rounded-2xl px-5 py-3 text-sm font-semibold bg-sky-600 text-white hover:bg-sky-700 transition shadow-soft"
-                >
-                  Направи акаунт
-                </Link>
-                <Link
-                  to="/"
-                  className="rounded-2xl px-5 py-3 text-sm font-semibold border border-sky-200 text-sky-700 hover:bg-sky-50 transition"
-                >
-                  Виж началото
-                </Link>
-              </div>
-            </div>
-
-            <div className="text-xs text-slate-500">
-              Сигурността е проста: код за стая + одобрение.
             </div>
           </div>
         </div>
       </div>
 
-      <footer className="border-t border-sky-100 bg-white">
-        <div className="max-w-6xl mx-auto px-4 py-8 text-xs text-slate-500 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-2xl bg-sky-600 flex items-center justify-center shadow-soft">
-              <span className="text-white font-black">ОД</span>
-            </div>
-            <div>
-              <div className="font-semibold text-slate-900">Онлайн Домоуправител</div>
-              <div>Модерно управление на входове.</div>
-            </div>
-          </div>
-          <div>© {new Date().getFullYear()} Всички права запазени</div>
-        </div>
-      </footer>
+      
     </div>
   );
 }

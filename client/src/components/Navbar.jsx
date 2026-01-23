@@ -8,8 +8,10 @@ function Item({ to, children, onClick }) {
       to={to}
       onClick={onClick}
       className={({ isActive }) =>
-        `block px-3 py-2 rounded-xl text-sm font-semibold transition ${
-          isActive ? "bg-sky-600 text-white" : "text-slate-700 hover:bg-sky-50"
+        `block px-3 py-2 rounded-2xl text-sm font-semibold transition ${
+          isActive
+            ? "bg-slate-900 text-white shadow-sm"
+            : "text-slate-700 hover:text-slate-900 hover:bg-slate-100"
         }`
       }
     >
@@ -22,7 +24,7 @@ function GhostBtn({ children, onClick }) {
   return (
     <button
       onClick={onClick}
-      className="rounded-2xl px-4 py-2 text-sm font-semibold border border-sky-200 text-sky-700 hover:bg-sky-50"
+      className="rounded-2xl px-4 py-2 text-sm font-semibold border border-slate-300 text-slate-900 hover:bg-slate-100 transition"
     >
       {children}
     </button>
@@ -74,13 +76,13 @@ export default function Navbar() {
   const secondary = links.slice(5);
 
   return (
-    <header className="sticky top-0 z-30 bg-white/80 backdrop-blur border-b border-sky-100">
+    <header className="sticky top-0 z-30 bg-white/85 backdrop-blur border-b border-slate-200">
       <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
-        <Link to="/" className="flex items-center gap-2" onClick={closeAll}>
-          <div className="h-10 w-10 rounded-2xl bg-sky-600 flex items-center justify-center shadow-soft">
+        <Link to="/" className="flex items-center gap-3" onClick={closeAll}>
+          <div className="h-10 w-10 rounded-2xl bg-slate-900 flex items-center justify-center shadow-sm">
             <span className="text-white font-black text-lg">ОД</span>
           </div>
-          <div className="leading-tight">
+          <div className="leading-tight min-w-0">
             <div className="font-semibold text-slate-900">Онлайн Домоуправител</div>
             <div className="text-xs text-slate-500">
               {user ? `${user.name} • ${user.role}` : "Вход • Регистрация"}
@@ -89,7 +91,9 @@ export default function Navbar() {
         </Link>
 
         <nav className="hidden lg:flex items-center gap-1">
-          <Item to="/" onClick={closeAll}>Начало</Item>
+          <Item to="/" onClick={closeAll}>
+            Начало
+          </Item>
 
           {primary.map((l) => (
             <Item key={l.to} to={l.to} onClick={closeAll}>
@@ -101,13 +105,18 @@ export default function Navbar() {
             <div className="relative">
               <button
                 onClick={() => setMoreOpen((v) => !v)}
-                className="px-3 py-2 rounded-xl text-sm font-semibold text-slate-700 hover:bg-sky-50"
+                aria-haspopup="menu"
+                aria-expanded={moreOpen}
+                className="px-3 py-2 rounded-2xl text-sm font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition"
               >
-                Още ▾
+                Още <span className="text-slate-500">▾</span>
               </button>
 
               {moreOpen && (
-                <div className="absolute right-0 mt-2 w-48 rounded-2xl border border-slate-200 bg-white shadow-soft p-2">
+                <div className="absolute right-0 mt-2 w-52 rounded-2xl border border-slate-200 bg-white shadow-sm p-2">
+                  <div className="text-[11px] font-semibold text-slate-500 px-2 py-1">
+                    Още секции
+                  </div>
                   {secondary.map((l) => (
                     <Item key={l.to} to={l.to} onClick={closeAll}>
                       {l.label}
@@ -122,26 +131,45 @@ export default function Navbar() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setMobileOpen((v) => !v)}
-            className="lg:hidden rounded-2xl px-3 py-2 text-sm font-semibold border border-slate-200 hover:bg-slate-50"
+            className="lg:hidden rounded-2xl px-3 py-2 text-sm font-semibold border border-slate-300 text-slate-900 hover:bg-slate-100 transition"
+            aria-label="Меню"
+            aria-expanded={mobileOpen}
           >
             ☰
           </button>
 
           {!user ? (
             <>
-              <Link to="/login" className="hidden md:inline rounded-2xl px-4 py-2 text-sm font-semibold border border-sky-200 text-sky-700 hover:bg-sky-50">
+              <Link
+                to="/login"
+                className="hidden md:inline rounded-2xl px-4 py-2 text-sm font-semibold border border-slate-300 text-slate-900 hover:bg-slate-100 transition"
+              >
                 Вход
               </Link>
-              <Link to="/register" className="hidden md:inline rounded-2xl px-4 py-2 text-sm font-semibold bg-sky-600 text-white hover:bg-sky-700 shadow-soft">
+              <Link
+                to="/register"
+                className="hidden md:inline rounded-2xl px-4 py-2 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 transition shadow-sm"
+              >
                 Регистрация
               </Link>
             </>
           ) : (
             <>
-              <GhostBtn onClick={() => { closeAll(); navigate("/"); }}>Начало</GhostBtn>
+              <GhostBtn
+                onClick={() => {
+                  closeAll();
+                  navigate("/");
+                }}
+              >
+                Начало
+              </GhostBtn>
               <button
-                onClick={() => { logout(); closeAll(); navigate("/"); }}
-                className="rounded-2xl px-4 py-2 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800"
+                onClick={() => {
+                  logout();
+                  closeAll();
+                  navigate("/");
+                }}
+                className="rounded-2xl px-4 py-2 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 transition shadow-sm"
               >
                 Изход
               </button>
@@ -151,14 +179,48 @@ export default function Navbar() {
       </div>
 
       {mobileOpen && (
-        <div className="lg:hidden border-t border-sky-100 bg-white">
+        <div className="lg:hidden border-t border-slate-200 bg-white">
           <div className="max-w-6xl mx-auto px-4 py-3 space-y-1">
-            <Item to="/" onClick={closeAll}>Начало</Item>
+            <div className="flex items-center justify-between gap-2 pb-2">
+              <div className="text-xs text-slate-500">
+                {user ? "Навигация" : "Меню"}
+              </div>
+              <button
+                onClick={closeAll}
+                className="text-xs font-semibold text-slate-700 hover:text-slate-900"
+              >
+                Затвори
+              </button>
+            </div>
+
+            <Item to="/" onClick={closeAll}>
+              Начало
+            </Item>
+
             {links.map((l) => (
               <Item key={l.to} to={l.to} onClick={closeAll}>
                 {l.label}
               </Item>
             ))}
+
+            {!user && (
+              <div className="pt-2 grid grid-cols-2 gap-2">
+                <Link
+                  to="/login"
+                  onClick={closeAll}
+                  className="inline-flex items-center justify-center rounded-2xl px-4 py-2 text-sm font-semibold border border-slate-300 text-slate-900 hover:bg-slate-100 transition"
+                >
+                  Вход
+                </Link>
+                <Link
+                  to="/register"
+                  onClick={closeAll}
+                  className="inline-flex items-center justify-center rounded-2xl px-4 py-2 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 transition shadow-sm"
+                >
+                  Регистрация
+                </Link>
+              </div>
+            )}
           </div>
         </div>
       )}

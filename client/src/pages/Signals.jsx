@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import api from "../lib/api";
 import { useAuth } from "../store/auth";
 import { PageHeader, HelpCard, ErrorBox, SuccessBox } from "../components/PageBits";
+import SiteFooter from "../components/SiteFooter";
 
 function fmtDateTime(d) {
   if (!d) return "—";
@@ -105,10 +106,10 @@ export default function Signals() {
 
   const badge = (s) => {
     const map = {
-      open: "bg-yellow-100 text-yellow-700",
-      in_progress: "bg-sky-100 text-sky-700",
-      done: "bg-green-100 text-green-700",
-      rejected: "bg-red-100 text-red-700",
+      open: "bg-amber-50 text-amber-900 border-amber-200",
+      in_progress: "bg-slate-50 text-slate-900 border-slate-200",
+      done: "bg-emerald-50 text-emerald-900 border-emerald-200",
+      rejected: "bg-rose-50 text-rose-900 border-rose-200",
     };
     const label = {
       open: "Отворен",
@@ -117,13 +118,13 @@ export default function Signals() {
       rejected: "Отхвърлен",
     };
     return (
-      <span className={`inline-flex text-xs px-2 py-1 rounded-full ${map[s] || "bg-slate-100 text-slate-700"}`}>
+      <span className={`inline-flex text-xs px-2.5 py-1 rounded-full border ${map[s] || "bg-slate-100 text-slate-700 border-slate-200"}`}>
         {label[s] || "—"}
       </span>
     );
   };
 
-  // ✅ CHANGED: privacy — resident вижда само своите сигнали
+  // privacy — resident вижда само своите сигнали
   const visibleItems = useMemo(() => {
     if (isManager) return items;
 
@@ -157,7 +158,7 @@ export default function Signals() {
 
       if (!query) return true;
 
-      // ✅ CHANGED: при resident не включваме createdBy.name в търсенето (анонимност в UI)
+      // при resident не включваме createdBy.name в търсенето (анонимност в UI)
       const hay = isManager
         ? `${s?.title || ""} ${s?.description || ""} ${s?.createdBy?.name || ""} ${s?.floor || ""} ${s?.apartment || ""}`.toLowerCase()
         : `${s?.title || ""} ${s?.description || ""} ${s?.floor || ""} ${s?.apartment || ""}`.toLowerCase();
@@ -188,298 +189,311 @@ export default function Signals() {
     : "Виждаш само твоите сигнали и техния статус. Други сигнали не се показват, за да има анонимност.";
 
   return (
-    <div className="min-h-screen bg-sky-50 p-6">
-      <div className="max-w-6xl mx-auto space-y-4">
-        <PageHeader
-          title="Сигнали"
-          subtitle={
-            <>
-              Подай проблем/ремонт към домоуправителя. Няма избор на вход — входът е фиксиран по стаята.
-              <br />
-              {isManager
-                ? "Като домоуправител виждаш всички сигнали и управляваш статуса."
-                : "Като живущ виждаш само твоите сигнали и техния статус."}
-            </>
-          }
-          right={
-            <button
-              onClick={load}
-              className="rounded-2xl px-4 py-2 text-sm font-semibold border border-sky-200 text-sky-700 hover:bg-sky-50"
-            >
-              Обнови
-            </button>
-          }
-        />
-
-        <ErrorBox>{err}</ErrorBox>
-        <SuccessBox>{msg}</SuccessBox>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* MAIN */}
-          <div className="lg:col-span-2 space-y-4">
-            {/* Summary */}
-            <div className="rounded-3xl border border-sky-100 bg-white p-6 shadow-soft">
-              <div className="font-black text-slate-900">Обобщение</div>
-              <div className="text-sm text-slate-600 mt-2">
+    <div className="min-h-screen flex flex-col bg-slate-50">
+      <div className="flex-1 p-6">
+        <div className="max-w-6xl mx-auto space-y-4">
+          <PageHeader
+            title="Сигнали"
+            subtitle={
+              <>
+                Подай проблем/ремонт към домоуправителя. Няма избор на вход — входът е фиксиран по стаята.
+                <br />
                 {isManager
-                  ? "Това е регистър на проблеми и заявки. Целта е проследимост: кога е подадено, къде е и в какъв статус е."
-                  : "Тук виждаш само твоите сигнали. Това осигурява анонимност и намалява излишни дискусии между живущите."}
-              </div>
+                  ? "Като домоуправител виждаш всички сигнали и управляваш статуса."
+                  : "Като живущ виждаш само твоите сигнали и техния статус."}
+              </>
+            }
+            right={
+              <button
+                onClick={load}
+                className="rounded-2xl px-4 py-2 text-sm font-semibold border border-slate-300 text-slate-900 hover:bg-slate-100 transition"
+              >
+                Обнови
+              </button>
+            }
+          />
 
-              <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3 text-sm">
-                <div className="rounded-2xl border border-slate-200 p-4">
-                  <div className="text-xs text-slate-500">{isManager ? "Общо сигнали" : "Мои сигнали"}</div>
-                  <div className="text-2xl font-black text-slate-900">{stats.total}</div>
-                </div>
-                <div className="rounded-2xl border border-slate-200 p-4">
-                  <div className="text-xs text-slate-500">Отворени</div>
-                  <div className="text-2xl font-black text-slate-900">{stats.by.open}</div>
-                </div>
-                <div className="rounded-2xl border border-slate-200 p-4">
-                  <div className="text-xs text-slate-500">В процес</div>
-                  <div className="text-2xl font-black text-slate-900">{stats.by.in_progress}</div>
-                </div>
-                <div className="rounded-2xl border border-slate-200 p-4">
-                  <div className="text-xs text-slate-500">Завършени</div>
-                  <div className="text-2xl font-black text-slate-900">{stats.by.done}</div>
-                </div>
-              </div>
+          <ErrorBox>{err}</ErrorBox>
+          <SuccessBox>{msg}</SuccessBox>
 
-              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                <div className="font-semibold">Последен сигнал</div>
-                <div className="mt-1">{stats.newestText}</div>
-              </div>
-            </div>
-
-            {/* Create */}
-            <div className="rounded-3xl border border-sky-100 bg-white p-6 shadow-soft">
-              <div className="font-black text-slate-900">Нов сигнал</div>
-              <div className="text-sm text-slate-600 mt-2">
-                Напиши ясно какво е проблемът и къде се намира. Колкото по-конкретно, толкова по-бързо се решава.
-              </div>
-
-              <form onSubmit={create} className="mt-4 space-y-3">
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">Заглавие</label>
-                  <input
-                    className="w-full border rounded-2xl px-4 py-3"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="пример: Изгоряла крушка на стълбището"
-                  />
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* MAIN */}
+            <div className="lg:col-span-2 space-y-4">
+              {/* Summary */}
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="font-black text-slate-900">Обобщение</div>
+                <div className="text-sm text-slate-600 mt-2">
+                  {isManager
+                    ? "Това е регистър на проблеми и заявки. Целта е проследимост: кога е подадено, къде е и в какъв статус е."
+                    : "Тук виждаш само твоите сигнали. Това осигурява анонимност и намалява излишни дискусии между живущите."}
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs text-slate-500 mb-1">Етаж (по желание)</label>
-                    <input
-                      className="w-full border rounded-2xl px-4 py-3"
-                      value={floor}
-                      onChange={(e) => setFloor(e.target.value)}
-                      placeholder="пример: 3"
-                    />
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3 text-sm">
+                  <div className="rounded-2xl border border-slate-200 p-4">
+                    <div className="text-xs text-slate-500">{isManager ? "Общо сигнали" : "Мои сигнали"}</div>
+                    <div className="text-2xl font-black text-slate-900">{stats.total}</div>
                   </div>
-                  <div>
-                    <label className="block text-xs text-slate-500 mb-1">Апартамент</label>
-                    <input
-                      className="w-full border rounded-2xl px-4 py-3"
-                      value={apartment}
-                      onChange={(e) => setApartment(e.target.value)}
-                      placeholder="пример: 12"
-                    />
+                  <div className="rounded-2xl border border-slate-200 p-4">
+                    <div className="text-xs text-slate-500">Отворени</div>
+                    <div className="text-2xl font-black text-slate-900">{stats.by.open}</div>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 p-4">
+                    <div className="text-xs text-slate-500">В процес</div>
+                    <div className="text-2xl font-black text-slate-900">{stats.by.in_progress}</div>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 p-4">
+                    <div className="text-xs text-slate-500">Завършени</div>
+                    <div className="text-2xl font-black text-slate-900">{stats.by.done}</div>
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">Описание</label>
-                  <textarea
-                    className="w-full border rounded-2xl px-4 py-3 min-h-[130px]"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Опиши проблема: къде е, от кога, има ли риск/опасност..."
-                  />
-                </div>
-
-                <button className="w-full rounded-2xl px-4 py-3 text-sm font-semibold bg-sky-600 text-white hover:bg-sky-700">
-                  Изпрати сигнал
-                </button>
-              </form>
-
-              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                <div className="font-semibold">Шаблон (по желание)</div>
-                <div className="text-xs text-slate-500 mt-1">
-                  Можеш да копираш и да попълниш по точки. Това помага сигналът да е максимално ясен.
-                </div>
-                <pre className="mt-3 text-xs whitespace-pre-wrap leading-relaxed text-slate-700">
-                  {templateText}
-                </pre>
-              </div>
-            </div>
-
-            {/* Registry list */}
-            <div className="rounded-3xl border border-sky-100 bg-white p-6 shadow-soft">
-              <div className="font-black text-slate-900">{listTitle}</div>
-              <div className="text-sm text-slate-600 mt-2">{listSubtitle}</div>
-
-              <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">Търсене</label>
-                  <input
-                    value={q}
-                    onChange={(e) => setQ(e.target.value)}
-                    placeholder="пример: вода, ток, асансьор, апартамент..."
-                    className="w-full border rounded-2xl px-4 py-3"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">Статус</label>
-                  <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    className="w-full border rounded-2xl px-4 py-3 bg-white"
-                  >
-                    <option value="all">Всички</option>
-                    <option value="open">Отворен</option>
-                    <option value="in_progress">В процес</option>
-                    <option value="done">Завършен</option>
-                    <option value="rejected">Отхвърлен</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">Показване</label>
-                  <select
-                    value={showCount}
-                    onChange={(e) => setShowCount(Number(e.target.value))}
-                    className="w-full border rounded-2xl px-4 py-3 bg-white"
-                  >
-                    {[25, 50, 100].map((n) => (
-                      <option key={n} value={n}>
-                        {n} сигнала
-                      </option>
-                    ))}
-                  </select>
+                <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                  <div className="font-semibold">Последен сигнал</div>
+                  <div className="mt-1">{stats.newestText}</div>
                 </div>
               </div>
 
-              {loading ? (
-                <div className="text-sm text-slate-500 mt-4">Зареждане...</div>
-              ) : shortList.length === 0 ? (
-                <div className="text-sm text-slate-500 mt-4">
-                  {isManager ? "Няма сигнали по тези критерии." : "Нямаш подадени сигнали по тези критерии."}
+              {/* Create */}
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="font-black text-slate-900">Нов сигнал</div>
+                <div className="text-sm text-slate-600 mt-2">
+                  Напиши ясно какво е проблемът и къде се намира. Колкото по-конкретно, толкова по-бързо се решава.
                 </div>
-              ) : (
-                <div className="mt-4 space-y-3">
-                  {shortList.map((s) => {
-                    const cat = detectCategory(s);
-                    return (
-                      <div key={s._id} className="rounded-3xl border border-slate-200 p-5">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="font-black text-slate-900">{s.title}</div>
-                            <div className="text-xs text-slate-500 mt-1">
-                              {fmtDateTime(s.createdAt)}
-                              {isManager ? ` • ${s.createdBy?.name || "—"}` : ""}
-                              {" • "}
-                              {cat}
-                            </div>
 
-                            <div className="text-sm text-slate-600 mt-3 whitespace-pre-wrap">
-                              {s.description}
-                            </div>
+                <form onSubmit={create} className="mt-4 space-y-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Заглавие</label>
+                    <input
+                      className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      placeholder="пример: Изгоряла крушка на стълбището"
+                    />
+                  </div>
 
-                            <div className="text-xs text-slate-500 mt-3">
-                              {s.floor ? `Етаж: ${s.floor} • ` : ""}
-                              {s.apartment ? `Ап: ${s.apartment} • ` : ""}
-                              Статус: {badge(s.status)}
-                            </div>
-                          </div>
-
-                          <div className="shrink-0">{badge(s.status)}</div>
-                        </div>
-
-                        {isManager && (
-                          <div className="mt-4 flex flex-wrap gap-2">
-                            <button
-                              onClick={() => updateStatus(s._id, "open")}
-                              className="rounded-2xl px-3 py-2 text-xs font-semibold border border-slate-200 hover:bg-slate-50"
-                            >
-                              Отворен
-                            </button>
-                            <button
-                              onClick={() => updateStatus(s._id, "in_progress")}
-                              className="rounded-2xl px-3 py-2 text-xs font-semibold border border-slate-200 hover:bg-slate-50"
-                            >
-                              В процес
-                            </button>
-                            <button
-                              onClick={() => updateStatus(s._id, "done")}
-                              className="rounded-2xl px-3 py-2 text-xs font-semibold bg-green-600 text-white hover:bg-green-700"
-                            >
-                              Завършен
-                            </button>
-                            <button
-                              onClick={() => updateStatus(s._id, "rejected")}
-                              className="rounded-2xl px-3 py-2 text-xs font-semibold border border-red-200 text-red-700 hover:bg-red-50"
-                            >
-                              Отхвърли
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-
-                  {filtered.length > shortList.length && (
-                    <div className="pt-2">
-                      <button
-                        onClick={() => setShowCount((x) => Math.min((x || 0) + 50, 500))}
-                        className="rounded-2xl px-4 py-2 text-sm font-semibold border border-slate-200 hover:bg-slate-50"
-                      >
-                        Покажи още
-                      </button>
-                      <div className="text-xs text-slate-500 mt-2">
-                        Показваш {shortList.length} от {filtered.length} резултата.
-                      </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">Етаж (по желание)</label>
+                      <input
+                        className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
+                        value={floor}
+                        onChange={(e) => setFloor(e.target.value)}
+                        placeholder="пример: 3"
+                      />
                     </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">Апартамент</label>
+                      <input
+                        className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
+                        value={apartment}
+                        onChange={(e) => setApartment(e.target.value)}
+                        placeholder="пример: 12"
+                      />
+                    </div>
+                  </div>
 
-          {/* ASIDE HELP */}
-          <div className="space-y-4">
-            <HelpCard title="Как да пишеш добър сигнал">
-              <ul className="list-disc pl-5 mt-2 space-y-2">
-                <li>Къде точно е проблемът (етаж/до кой апартамент/стълбище)?</li>
-                <li>От кога е и дали се влошава?</li>
-                <li>Има ли опасност (ток, вода, хлъзгаво)?</li>
-              </ul>
-            </HelpCard>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Описание</label>
+                    <textarea
+                      className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300 min-h-[130px]"
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      placeholder="Опиши проблема: къде е, от кога, има ли риск/опасност..."
+                    />
+                  </div>
 
-            <HelpCard title="Анонимност и видимост">
-              <div className="text-sm text-slate-700 space-y-2">
-                <div>
-                  Живущите виждат само своите сигнали и техния статус.
-                </div>
-                <div>
-                  Домоуправителят вижда всички сигнали, за да може да ги обработва и да управлява статуса.
-                </div>
-                <div>
-                  За пълна анонимност е препоръчително това правило да се наложи и в backend (API да връща само “моите” за resident).
+                  <button className="w-full rounded-2xl px-4 py-3.5 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 transition shadow-sm">
+                    Изпрати сигнал
+                  </button>
+                </form>
+
+                <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                  <div className="font-semibold">Шаблон (по желание)</div>
+                  <div className="text-xs text-slate-500 mt-1">
+                    Можеш да копираш и да попълниш по точки. Това помага сигналът да е максимално ясен.
+                  </div>
+                  <pre className="mt-3 text-xs whitespace-pre-wrap leading-relaxed text-slate-700">{templateText}</pre>
                 </div>
               </div>
-            </HelpCard>
 
-            <HelpCard title="Ако секцията е заключена">
-              Ако получиш съобщение, че входът не е активен — trial/абонаментът е изтекъл.
-              Проверяваш статуса в <b>Стая</b> или <b>Табло</b>.
-            </HelpCard>
+              {/* Registry list */}
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="font-black text-slate-900">{listTitle}</div>
+                <div className="text-sm text-slate-600 mt-2">{listSubtitle}</div>
+
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Търсене</label>
+                    <input
+                      value={q}
+                      onChange={(e) => setQ(e.target.value)}
+                      placeholder="пример: вода, ток, асансьор, апартамент..."
+                      className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Статус</label>
+                    <select
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value)}
+                      className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
+                    >
+                      <option value="all">Всички</option>
+                      <option value="open">Отворен</option>
+                      <option value="in_progress">В процес</option>
+                      <option value="done">Завършен</option>
+                      <option value="rejected">Отхвърлен</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">Показване</label>
+                    <select
+                      value={showCount}
+                      onChange={(e) => setShowCount(Number(e.target.value))}
+                      className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
+                    >
+                      {[25, 50, 100].map((n) => (
+                        <option key={n} value={n}>
+                          {n} сигнала
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {loading ? (
+                  <div className="text-sm text-slate-500 mt-4">Зареждане...</div>
+                ) : shortList.length === 0 ? (
+                  <div className="text-sm text-slate-500 mt-4">
+                    {isManager ? "Няма сигнали по тези критерии." : "Нямаш подадени сигнали по тези критерии."}
+                  </div>
+                ) : (
+                  <div className="mt-4 space-y-3">
+                    {shortList.map((s) => {
+                      const cat = detectCategory(s);
+
+                      return (
+                        <div key={s._id} className="rounded-3xl border border-slate-200 p-5 bg-white shadow-sm">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <div className="font-black text-slate-900">{s.title}</div>
+                                {badge(s.status)}
+                              </div>
+
+                              <div className="text-xs text-slate-500 mt-1">
+                                {fmtDateTime(s.createdAt)}
+                                {isManager ? ` • ${s.createdBy?.name || "—"}` : ""}
+                                {" • "}
+                                {cat}
+                              </div>
+
+                              <div className="text-sm text-slate-700 mt-3 whitespace-pre-wrap leading-relaxed">
+                                {s.description}
+                              </div>
+
+                              <div className="text-xs text-slate-500 mt-3">
+                                {s.floor ? `Етаж: ${s.floor} • ` : ""}
+                                {s.apartment ? `Ап: ${s.apartment} • ` : ""}
+                                Статус: {badge(s.status)}
+                              </div>
+                            </div>
+
+                            <div className="shrink-0">{badge(s.status)}</div>
+                          </div>
+
+                          {isManager && (
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              <button
+                                onClick={() => updateStatus(s._id, "open")}
+                                className="rounded-2xl px-3 py-2 text-xs font-semibold border border-slate-300 text-slate-900 hover:bg-slate-100 transition"
+                              >
+                                Отворен
+                              </button>
+                              <button
+                                onClick={() => updateStatus(s._id, "in_progress")}
+                                className="rounded-2xl px-3 py-2 text-xs font-semibold border border-slate-300 text-slate-900 hover:bg-slate-100 transition"
+                              >
+                                В процес
+                              </button>
+                              <button
+                                onClick={() => updateStatus(s._id, "done")}
+                                className="rounded-2xl px-3 py-2 text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition"
+                              >
+                                Завършен
+                              </button>
+                              <button
+                                onClick={() => updateStatus(s._id, "rejected")}
+                                className="rounded-2xl px-3 py-2 text-xs font-semibold border border-rose-300 text-rose-900 hover:bg-rose-50 transition"
+                              >
+                                Отхвърли
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    {filtered.length > shortList.length && (
+                      <div className="pt-2">
+                        <button
+                          onClick={() => setShowCount((x) => Math.min((x || 0) + 50, 500))}
+                          className="rounded-2xl px-4 py-2.5 text-sm font-semibold border border-slate-300 text-slate-900 hover:bg-slate-100 transition"
+                        >
+                          Покажи още
+                        </button>
+                        <div className="text-xs text-slate-500 mt-2">
+                          Показваш {shortList.length} от {filtered.length} резултата.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ASIDE HELP */}
+            <div className="space-y-4">
+              <HelpCard title="Как да пишеш добър сигнал">
+                <ul className="list-disc pl-5 mt-2 space-y-2">
+                  <li>Къде точно е проблемът (етаж/до кой апартамент/стълбище)?</li>
+                  <li>От кога е и дали се влошава?</li>
+                  <li>Има ли опасност (ток, вода, хлъзгаво)?</li>
+                </ul>
+              </HelpCard>
+
+              <HelpCard title="Анонимност и видимост">
+                <div className="text-sm text-slate-700 space-y-2">
+                  <div>Живущите виждат само своите сигнали и техния статус.</div>
+                  <div>Домоуправителят вижда всички сигнали, за да може да ги обработва и да управлява статуса.</div>
+                  <div>
+                    За пълна анонимност е препоръчително това правило да се наложи и в backend (API да връща само “моите” за resident).
+                  </div>
+                </div>
+              </HelpCard>
+
+              <HelpCard title="Ако секцията е заключена">
+                Ако получиш съобщение, че входът не е активен — trial/абонаментът е изтекъл. Проверяваш статуса в <b>Стая</b> или <b>Табло</b>.
+              </HelpCard>
+
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="text-sm font-semibold text-slate-900">Работен процес</div>
+                <div className="mt-2 text-sm text-slate-600 leading-relaxed">
+                  Добра практика е домоуправителят да сменя статуса при всяко движение: приемане, започване на работа, завършване или отказ с причина.
+                  Така сигналите стават “история”, а не чат.
+                </div>
+                <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+                  Категорията в списъка е frontend-only и служи за по-лесно ориентиране без промени по backend-а.
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
+
+      
     </div>
   );
 }
