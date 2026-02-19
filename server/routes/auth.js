@@ -131,6 +131,7 @@ router.post("/register", async (req, res) => {
       phone,
       role: "resident",
       emailVerified: false,
+      mustVerifyEmailForRoomActions: true,
       emailVerifyTokenHash: "",
       emailVerifyExpires: null,
     });
@@ -145,7 +146,7 @@ router.post("/register", async (req, res) => {
 
     const token = signToken(user);
     return res.status(201).json({
-      message: "✅ Регистрация успешна. (Потвърждението на имейл е препоръчително.)",
+      message: "✅ Регистрация успешна. Потвърди имейла, за да можеш да влизаш в стая/да подаваш заявка за домоуправител.",
       token,
       user: user.toJSON(),
     });

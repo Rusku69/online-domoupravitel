@@ -1,0 +1,603 @@
+Това ми е Home.jsx 
+
+import { Link } from "react-router-dom";
+import { useMemo, useState } from "react";
+import { useAuth } from "../store/auth";
+
+function Badge({ children }) {
+  return (
+    <span className="inline-flex items-center gap-2 text-xs px-3 py-1 rounded-full bg-sky-100 text-sky-700 border border-sky-200">
+      {children}
+    </span>
+  );
+}
+
+function FeatureCard({ title, desc, icon }) {
+  return (
+    <div className="rounded-3xl border border-sky-100 bg-white p-5 shadow-soft hover:shadow-md transition">
+      <div className="flex items-start gap-3">
+        <div className="h-11 w-11 rounded-2xl bg-sky-100 text-sky-700 flex items-center justify-center text-lg shadow-sm">
+          {icon}
+        </div>
+        <div>
+          <h3 className="font-semibold text-slate-900">{title}</h3>
+          <p className="text-sm text-slate-600 mt-1 leading-relaxed">{desc}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Step({ n, title, desc }) {
+  return (
+    <div className="rounded-3xl border border-sky-100 bg-white p-5 shadow-soft">
+      <div className="flex items-start gap-3">
+        <div className="h-10 w-10 rounded-2xl bg-sky-600 text-white font-black flex items-center justify-center shadow-soft">
+          {n}
+        </div>
+        <div>
+          <div className="font-semibold text-slate-900">{title}</div>
+          <div className="text-sm text-slate-600 mt-1 leading-relaxed">{desc}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * ✅ Визуализация на ВХОД → апартаменти
+ * - показва всички апартаменти във входа
+ * - hover показва статус + примерни детайли
+ * - demo логика: paidOnTime / overdue / unpaid
+ */
+function EntranceApartmentsDemo() {
+  const [entrance, setEntrance] = useState("А");
+  const [apCount, setApCount] = useState(24);
+
+  // DEMO “текуща такса” (пример)
+  const dueDate = useMemo(() => {
+    const d = new Date();
+    d.setDate(10); // 10-то число (пример)
+    d.setHours(23, 59, 59, 999);
+    return d;
+  }, []);
+
+  // правим демо статус по апартамент номер (детерминирано)
+  const getStatus = (apNumber) => {
+    // 0..2 pattern
+    const r = apNumber % 3;
+    if (r === 0) return "paidOnTime";
+    if (r === 1) return "overdue";
+    return "unpaid";
+  };
+
+  const getStatusMeta = (s) => {
+    if (s === "paidOnTime") {
+      return {
+        label: "Платено в срок",
+        pill: "bg-emerald-100 text-emerald-800 border-emerald-200",
+        tile: "bg-emerald-50 border-emerald-200 text-emerald-900",
+      };
+    }
+    if (s === "overdue") {
+      return {
+        label: "Просрочено",
+        pill: "bg-rose-100 text-rose-800 border-rose-200",
+        tile: "bg-rose-50 border-rose-200 text-rose-900",
+      };
+    }
+    return {
+      label: "Неплатено",
+      pill: "bg-amber-100 text-amber-800 border-amber-200",
+      tile: "bg-amber-50 border-amber-200 text-amber-900",
+    };
+  };
+
+  const apartments = useMemo(() => {
+    return Array.from({ length: apCount }).map((_, i) => {
+      const ap = i + 1;
+      const status = getStatus(ap);
+      const meta = getStatusMeta(status);
+
+      // demo “кой е платил”
+      const who =
+        status === "paidOnTime"
+          ? `Ап. ${ap} • Платил: Иван П.`
+          : status === "overdue"
+          ? `Ап. ${ap} • Последно плащане: преди 2 месеца`
+          : `Ап. ${ap} • Няма плащане`;
+
+      const due =
+        `Срок: ${dueDate.toLocaleDateString("bg-BG")}`;
+
+      return { ap, status, meta, who, due };
+    });
+  }, [apCount, dueDate]);
+
+  // grid columns според броя апартаменти
+  const cols = apCount <= 18 ? 6 : apCount <= 30 ? 6 : 8;
+
+  return (
+    <div className="rounded-3xl border border-sky-100 bg-white shadow-soft overflow-hidden">
+      <div className="p-4 border-b border-sky-100 flex items-center justify-between gap-3">
+        <div>
+          <div className="text-xs text-slate-500">Визуализация (DEMO)</div>
+          <div className="font-semibold text-slate-900">
+            Вход {entrance} • всички апартаменти • hover за статус
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-xs px-2 py-1 rounded-full bg-sky-100 text-sky-700 border border-sky-200">
+            DEMO
+          </span>
+        </div>
+      </div>
+
+      <div className="p-4">
+        {/* controls */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
+          <div className="flex items-center gap-2">
+            <div className="text-xs text-slate-500">Избери вход:</div>
+            <div className="flex gap-2">
+              {["А", "Б", "В"].map((x) => (
+                <button
+                  key={x}
+                  onClick={() => setEntrance(x)}
+                  className={`text-xs px-3 py-1.5 rounded-2xl border transition ${
+                    entrance === x
+                      ? "bg-sky-600 text-white border-sky-600"
+                      : "bg-white text-sky-700 border-sky-200 hover:bg-sky-50"
+                  }`}
+                >
+                  {x}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 sm:ml-auto">
+            <div className="text-xs text-slate-500">Апартаменти:</div>
+            <select
+              value={apCount}
+              onChange={(e) => setApCount(Number(e.target.value))}
+              className="text-xs border border-sky-200 rounded-2xl px-3 py-2 bg-white"
+            >
+              {[12, 18, 24, 30, 36].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* grid */}
+        <div
+          className="grid gap-2"
+          style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+        >
+          {apartments.map((x) => (
+            <div key={x.ap} className="relative group">
+              <div
+                className={`h-11 rounded-2xl border ${x.meta.tile} flex items-center justify-center text-xs font-black hover:scale-[1.03] transition cursor-default`}
+              >
+                {x.ap}
+              </div>
+
+              {/* tooltip */}
+              <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 -top-2 opacity-0 group-hover:opacity-100 group-hover:-translate-y-10 transition duration-150 z-10">
+                <div className="w-56 rounded-2xl border border-sky-100 bg-white shadow-soft p-3">
+                  <div className={`inline-flex text-[11px] px-2 py-1 rounded-full border ${x.meta.pill}`}>
+                    {x.meta.label}
+                  </div>
+                  <div className="mt-2 text-xs text-slate-700 font-semibold">
+                    Вход {entrance} • {x.who}
+                  </div>
+                  <div className="mt-1 text-[11px] text-slate-500">{x.due}</div>
+                  <div className="mt-2 text-[11px] text-slate-500">
+                    (Това е DEMO. После го връзваме към реалните плащания.)
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* legend */}
+        <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-600">
+          <div className="flex items-center gap-2">
+            <span className="inline-block h-3 w-3 rounded bg-emerald-200 border border-emerald-300" />
+            Платено в срок
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="inline-block h-3 w-3 rounded bg-rose-200 border border-rose-300" />
+            Просрочено
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="inline-block h-3 w-3 rounded bg-amber-200 border border-amber-300" />
+            Неплатено
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PricingCard({ title, price, subtitle, items, primary, ctaText }) {
+  return (
+    <div
+      className={`rounded-3xl border p-6 shadow-soft transition ${
+        primary
+          ? "border-sky-300 bg-gradient-to-b from-sky-50 to-white"
+          : "border-slate-100 bg-white"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold text-sky-700">{title}</div>
+          <div className="text-3xl font-black text-slate-900 mt-1">{price}</div>
+          <div className="text-sm text-slate-600 mt-1 leading-relaxed">{subtitle}</div>
+        </div>
+        {primary && (
+          <span className="text-xs px-3 py-1 rounded-full bg-sky-600 text-white">
+            Най-добро
+          </span>
+        )}
+      </div>
+
+      <ul className="mt-5 space-y-2 text-sm text-slate-700">
+        {items.map((x, i) => (
+          <li key={i} className="flex gap-2">
+            <span className="text-sky-600">✓</span>
+            <span>{x}</span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-6">
+        <Link
+          to="/register"
+          className={`inline-flex w-full items-center justify-center rounded-2xl px-5 py-3 text-sm font-semibold transition ${
+            primary
+              ? "bg-sky-600 text-white hover:bg-sky-700 shadow-soft"
+              : "border border-sky-200 text-sky-700 hover:bg-sky-50"
+          }`}
+        >
+          {ctaText || "Започни сега"}
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+export default function Home() {
+  const { user } = useAuth();
+
+  return (
+    <div className="min-h-screen bg-sky-50">
+      {/* TOP HEADER */}
+      <header className="sticky top-0 z-20 bg-white/75 backdrop-blur border-b border-sky-100">
+        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+          <Link to="/" className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-2xl bg-sky-600 flex items-center justify-center shadow-soft">
+              <span className="text-white font-black text-lg">ОД</span>
+            </div>
+            <div>
+              <div className="font-semibold text-slate-900 leading-tight">
+                Онлайн Домоуправител
+              </div>
+              <div className="text-xs text-slate-500">
+                Стая • Обяви • Плащания • Сигнали • Справки
+              </div>
+            </div>
+          </Link>
+
+          <div className="flex items-center gap-2">
+            {user ? (
+              <Link
+                to="/dashboard"
+                className="rounded-2xl px-5 py-2.5 text-sm font-semibold bg-sky-600 text-white hover:bg-sky-700 transition shadow-soft"
+              >
+                Към таблото
+              </Link>
+            ) : (
+              <>
+                <Link
+                  to="/login"
+                  className="rounded-2xl px-5 py-2.5 text-sm font-semibold border border-sky-200 text-sky-700 hover:bg-sky-50 transition"
+                >
+                  Вход
+                </Link>
+                <Link
+                  to="/register"
+                  className="rounded-2xl px-5 py-2.5 text-sm font-semibold bg-sky-600 text-white hover:bg-sky-700 transition shadow-soft"
+                >
+                  Регистрация
+                </Link>
+              </>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* HERO */}
+      <section className="max-w-6xl mx-auto px-4 pt-10 pb-10">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
+          <div>
+            <Badge>⚡ Всичко за управлението на входа — на едно място</Badge>
+
+            <h1 className="text-4xl sm:text-5xl font-black text-slate-900 mt-4 leading-tight">
+              Край на бележките по входа.
+              <span className="text-sky-700"> Контрол, който е ясен.</span>
+            </h1>
+
+            <p className="text-slate-600 mt-4 text-base leading-relaxed">
+              Домоуправителят създава стая за блока/входа, живущите влизат с код и чак след одобрение
+              виждат обяви, плащания, сигнали и справки — само за <b>техния</b> вход.
+            </p>
+
+            <div className="mt-6 flex flex-col sm:flex-row gap-3">
+              <Link
+                to="/register"
+                className="inline-flex items-center justify-center rounded-2xl px-6 py-3.5 text-sm font-semibold bg-sky-600 text-white hover:bg-sky-700 transition shadow-soft"
+              >
+                Започни (1 месец безплатно)
+              </Link>
+              <Link
+                to="/login"
+                className="inline-flex items-center justify-center rounded-2xl px-6 py-3.5 text-sm font-semibold border border-sky-200 text-sky-700 hover:bg-sky-50 transition"
+              >
+                Вече имам акаунт
+              </Link>
+            </div>
+
+            <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-slate-600">
+              <div className="rounded-2xl bg-white border border-sky-100 p-3 shadow-soft">
+                ✅ Достъп само след одобрение
+              </div>
+              <div className="rounded-2xl bg-white border border-sky-100 p-3 shadow-soft">
+                ✅ Изолация по стая (roomId)
+              </div>
+              <div className="rounded-2xl bg-white border border-sky-100 p-3 shadow-soft">
+                ✅ Ясни начисления и сигнали
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="rounded-3xl bg-gradient-to-r from-sky-600 via-sky-500 to-sky-600 text-white p-6 shadow-soft">
+              <div className="text-xs text-sky-50/90">Как работи</div>
+              <div className="text-2xl font-bold mt-1">Стая за блок/вход</div>
+              <p className="text-sm text-sky-50/90 mt-2 leading-relaxed">
+                Влизане с код + одобрение. Няма “случайни хора”. Всичко вътре е само за вашия вход.
+              </p>
+
+              <div className="mt-4 flex flex-wrap gap-2 text-xs">
+                {["Обяви", "Плащания", "Сигнали", "Справки"].map((x) => (
+                  <span
+                    key={x}
+                    className="px-3 py-1 rounded-full bg-white/15 border border-white/25"
+                  >
+                    {x}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* ✅ реалистична визуализация (DEMO) */}
+            <EntranceApartmentsDemo />
+          </div>
+        </div>
+      </section>
+
+      {/* STEPS */}
+      <section className="max-w-6xl mx-auto px-4 pb-10">
+        <div className="flex items-end justify-between gap-4 mb-5">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-900">Стъпки за старт</h2>
+            <p className="text-sm text-slate-600 mt-1">
+              Няма сложни настройки — започваш за минути.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Step
+            n="1"
+            title="Регистрация"
+            desc="Създаваш акаунт и избираш дали си домоуправител или живущ."
+          />
+          <Step
+            n="2"
+            title="Стая"
+            desc="Домоуправителят създава стая и получава код. Живущите влизат с кода."
+          />
+          <Step
+            n="3"
+            title="Одобрение"
+            desc="Само одобрени профили виждат обяви, плащания, сигнали и справки."
+          />
+        </div>
+      </section>
+
+      {/* FEATURES */}
+      <section className="max-w-6xl mx-auto px-4 pb-10">
+        <div className="flex items-end justify-between gap-4 mb-5">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-900">Всички функционалности</h2>
+            <p className="text-sm text-slate-600 mt-1">
+              Всичко е организирано по стая, за да няма хаос между различни входове/блокове.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <FeatureCard
+            icon="📣"
+            title="Обяви за входа"
+            desc="Домоуправителят публикува важни неща. Живущите виждат само в своята стая."
+          />
+          <FeatureCard
+            icon="💳"
+            title="Начисления и такси"
+            desc="Начисляваш за целия вход или за конкретен апартамент. Всеки вижда само това, което го касае."
+          />
+          <FeatureCard
+            icon="🚨"
+            title="Сигнали"
+            desc="Проблеми (асансьор, теч, врата). Статус: нов / в процес / решен."
+          />
+          <FeatureCard
+            icon="📊"
+            title="Справки"
+            desc="Суми по период, филтри, общи задължения. Реално полезно за отчетност."
+          />
+          <FeatureCard
+            icon="🔒"
+            title="Код + одобрение"
+            desc="Никой не влиза “ей така”. Първо код, после одобрение от домоуправителя."
+          />
+          <FeatureCard
+            icon="🏢"
+            title="Визуализация (апартаменти)"
+            desc="Hover върху апартамент и веднага виждаш: платено в срок / просрочено / неплатено."
+          />
+        </div>
+      </section>
+
+      {/* WHY BETTER */}
+      <section className="max-w-6xl mx-auto px-4 pb-10">
+        <div className="rounded-3xl border border-sky-100 bg-white p-6 shadow-soft">
+          <h2 className="text-2xl font-bold text-slate-900">С какво сме по-добри</h2>
+          <p className="text-sm text-slate-600 mt-2 leading-relaxed">
+            Другите решения са или “чат без ред”, или “таблици без контекст”.
+            Тук имаш: <b>контрол на достъпа</b>, <b>изолация по стая</b> и <b>ясна визуализация</b>.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6 text-sm">
+            <div className="rounded-2xl bg-sky-50 border border-sky-100 p-4">
+              <div className="font-semibold text-slate-900">✅ Изолация по вход/стая</div>
+              <div className="text-slate-600 mt-1">
+                Данните не се смесват. Всичко е ограничено чрез roomId.
+              </div>
+            </div>
+            <div className="rounded-2xl bg-sky-50 border border-sky-100 p-4">
+              <div className="font-semibold text-slate-900">✅ Контрол кой влиза</div>
+              <div className="text-slate-600 mt-1">
+                Одобрение от домоуправителя. Реално спира майтапи и “фалшиви” потребители.
+              </div>
+            </div>
+            <div className="rounded-2xl bg-sky-50 border border-sky-100 p-4">
+              <div className="font-semibold text-slate-900">✅ Визуална яснота</div>
+              <div className="text-slate-600 mt-1">
+                Апартаменти като “прозорчета” + hover. Един поглед стига.
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* PRICING */}
+      <section className="max-w-6xl mx-auto px-4 pb-12">
+        <div className="flex items-end justify-between gap-4 mb-5">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-900">Абонамент</h2>
+            <p className="text-sm text-slate-600 mt-1 leading-relaxed">
+              Няма безплатен план. Има <b>1 месец безплатно</b>, след това цената е ясна:
+              <b> 1 лв / апартамент / вход</b> на месец.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <PricingCard
+            title="Старт (1 месец безплатно)"
+            price="0 лв"
+            subtitle="Пробваш всичко реално 30 дни."
+            items={[
+              "Стая (вход) + код",
+              "Одобрение на живущи",
+              "Обяви, плащания, сигнали, справки",
+              "Визуализация с hover (DEMO → после реална)",
+            ]}
+            ctaText="Започни тест периода"
+          />
+
+          <PricingCard
+            title="Активен абонамент"
+            price="1 лв / апартамент / месец"
+            subtitle="Плащаш според броя апартаменти във входа."
+            primary
+            items={[
+              "Пълен достъп до всички функционалности",
+              "Начисления за вход/апартамент",
+              "Справки и филтри",
+              "Приоритетни подобрения",
+              "Поддръжка при нужда",
+            ]}
+            ctaText="Регистрация и старт"
+          />
+        </div>
+
+        <div className="mt-4 text-xs text-slate-500">
+          Пример: 24 апартамента във вход → 24 лв/месец след тест периода.
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="max-w-6xl mx-auto px-4 pb-12">
+        <div className="rounded-3xl bg-gradient-to-r from-sky-700 via-sky-600 to-sky-700 text-white p-7 shadow-soft flex flex-col md:flex-row md:items-center md:justify-between gap-5">
+          <div>
+            <div className="text-2xl font-bold">Готов ли си да го пуснем реално?</div>
+            <div className="text-sm text-sky-50/90 mt-1 leading-relaxed">
+              Домоуправителят се регистрира, създава стая и дава кода на живущите.
+              Оттам нататък — всичко е под контрол.
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Link
+              to="/register"
+              className="rounded-2xl px-6 py-3 text-sm font-semibold bg-white text-sky-700 hover:bg-sky-50 transition"
+            >
+              Регистрация
+            </Link>
+            <Link
+              to="/login"
+              className="rounded-2xl px-6 py-3 text-sm font-semibold border border-white/40 hover:bg-white/10 transition"
+            >
+              Вход
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* FOOTER */}
+      <footer className="border-t border-sky-100 bg-white">
+        <div className="max-w-6xl mx-auto px-4 py-8">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-2xl bg-sky-600 flex items-center justify-center shadow-soft">
+                <span className="text-white font-black text-lg">ОД</span>
+              </div>
+              <div>
+                <div className="font-semibold text-slate-900">Онлайн Домоуправител</div>
+                <div className="text-xs text-slate-500">
+                  Управление на входове — модерно, подредено и ясно.
+                </div>
+              </div>
+            </div>
+
+            <div className="text-xs text-slate-500">
+              © {new Date().getFullYear()} Онлайн Домоуправител • Всички права запазени
+            </div>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+
+Ти ми даваш някакъв си код 100 реда, а аз исках обновяване на този като добавяне на новите функционалности примерно, искам да го оправиш.
+Отделно сега проверих, че като ти изтече абонамента няма от къде да се поднови което е голям проблем. Така че това трябва да го оправим и да сложим примерно в стая бутон за подновяване на абонамента, там чрез изи пей револют, карта и тнт.

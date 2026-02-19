@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import api from "../lib/api";
 import { useAuth } from "../store/auth";
 import { PageHeader, HelpCard, ErrorBox } from "../components/PageBits";
-import SiteFooter from "../components/SiteFooter";
+import { roleLabel } from "../lib/roles";
 
 function fmtDate(d) {
   if (!d) return "—";
@@ -310,7 +310,7 @@ export default function Dashboard() {
             <div className="flex flex-wrap items-center gap-2">
               <Pill tone={hasRoom ? "green" : "red"}>Стая: {hasRoom ? "активна" : "няма"}</Pill>
               <Pill tone={approved ? "green" : "yellow"}>Достъп: {approved ? "одобрен" : "чака"}</Pill>
-              <Pill tone="sky">Роля: {user.role}</Pill>
+              <Pill tone="sky">Роля: {roleLabel(user.role)}</Pill>
               <Pill tone="gray">
                 {user.city ? `${user.city} • ` : ""}
                 Блок {user.building || "—"} • Вход {user.entrance || "—"} {user.apartment ? `• Ап ${user.apartment}` : ""}
@@ -616,45 +616,6 @@ export default function Dashboard() {
 
                 <HelpCard title="Бърз навик">
                   Ако си живущ: проверявай таблото 10 секунди — ще знаеш дали има неплатено/обява/сигнал.
-                </HelpCard>
-
-                <HelpCard title="Бърза навигация">
-                  <div className="mt-2 grid grid-cols-1 gap-2">
-                    <Link
-                      to="/payments"
-                      className="rounded-2xl px-4 py-3 text-sm font-semibold border border-slate-300 text-slate-900 hover:bg-slate-100 transition text-center"
-                    >
-                      Плащания
-                    </Link>
-                    <Link
-                      to="/announcements"
-                      className="rounded-2xl px-4 py-3 text-sm font-semibold border border-slate-300 text-slate-900 hover:bg-slate-100 transition text-center"
-                    >
-                      Обяви
-                    </Link>
-                    <Link
-                      to="/signals"
-                      className="rounded-2xl px-4 py-3 text-sm font-semibold border border-slate-300 text-slate-900 hover:bg-slate-100 transition text-center"
-                    >
-                      Сигнали
-                    </Link>
-                    <Link
-                      to="/reports"
-                      className="rounded-2xl px-4 py-3 text-sm font-semibold border border-slate-300 text-slate-900 hover:bg-slate-100 transition text-center"
-                    >
-                      Справки
-                    </Link>
-                    <Link
-                      to="/room"
-                      className="rounded-2xl px-4 py-3 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 transition shadow-sm text-center"
-                    >
-                      Стая
-                    </Link>
-                  </div>
-
-                  <div className="mt-3 text-xs text-slate-500">
-                    Тези бутони са за удобство. Модулите се показват според достъп/одобрение/активност на входа.
-                  </div>
                 </HelpCard>
               </div>
             </div>

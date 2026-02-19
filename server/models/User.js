@@ -7,6 +7,9 @@ const userSchema = new mongoose.Schema(
 
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     emailVerified: { type: Boolean, default: false },
+    // За нови акаунти: join/manager-request се разрешават само след verify email.
+    // Старите акаунти остават без промяна (false/missing).
+    mustVerifyEmailForRoomActions: { type: Boolean, default: false },
 
     password: { type: String, required: true, minlength: 8 },
 

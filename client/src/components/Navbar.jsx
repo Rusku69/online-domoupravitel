@@ -1,6 +1,8 @@
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useMemo, useState } from "react";
 import { useAuth } from "../store/auth";
+import { roleLabel } from "../lib/roles";
+import { navigateWithTransition } from "../lib/viewTransition";
 
 function Item({ to, children, onClick }) {
   return (
@@ -8,10 +10,10 @@ function Item({ to, children, onClick }) {
       to={to}
       onClick={onClick}
       className={({ isActive }) =>
-        `block px-3 py-2 rounded-2xl text-sm font-semibold transition ${
+        `block px-3 py-2 rounded-2xl text-sm font-semibold border transition ${
           isActive
-            ? "bg-slate-900 text-white shadow-sm"
-            : "text-slate-700 hover:text-slate-900 hover:bg-slate-100"
+            ? "text-[#f4ffe8] border-[rgba(7,49,74,0.4)] bg-[linear-gradient(135deg,#0a4a79_0%,#0f6c5b_55%,#5b9d27_100%)] shadow-[0_10px_24px_rgba(7,49,74,0.24)]"
+            : "border-transparent text-slate-700 hover:text-slate-900 hover:bg-white/80 hover:border-emerald-200/90"
         }`
       }
     >
@@ -24,7 +26,7 @@ function GhostBtn({ children, onClick }) {
   return (
     <button
       onClick={onClick}
-      className="rounded-2xl px-4 py-2 text-sm font-semibold border border-slate-300 text-slate-900 hover:bg-slate-100 transition"
+      className="rounded-2xl px-4 py-2 text-sm font-semibold border border-[rgba(11,69,50,0.28)] text-[#0f3f35] bg-[rgba(252,255,248,0.78)] hover:bg-white/95 transition shadow-sm"
     >
       {children}
     </button>
@@ -42,6 +44,7 @@ export default function Navbar() {
   const approved = user?.memberStatus === "approved";
   const isAdmin = user?.role === "admin";
   const isManager = user?.role === "manager";
+  const isResident = user?.role === "resident";
 
   const closeAll = () => {
     setMobileOpen(false);
@@ -53,39 +56,45 @@ export default function Navbar() {
 
     // ✅ always when logged in
     out.push({ to: "/room", label: "Стая", show: !!user });
-    out.push({ to: "/dashboard", label: "Табло", show: !!user }); // ✅ NOW ALWAYS
+    out.push({
+      to: "/dashboard",
+      label: "Табло",
+      show: !!user && !isAdmin && (!isResident || hasRoom),
+    });
     out.push({ to: "/account", label: "Акаунт", show: !!user });
 
     // approved sections (still only when hasRoom+approved)
-    out.push({ to: "/announcements", label: "Обяви", show: !!user && hasRoom && approved });
-    out.push({ to: "/payments", label: "Плащания", show: !!user && hasRoom && approved });
-    out.push({ to: "/signals", label: "Сигнали", show: !!user && hasRoom && approved });
+    out.push({ to: "/announcements", label: "Обяви", show: !!user && !isAdmin && hasRoom && approved });
+    out.push({ to: "/payments", label: "Плащания", show: !!user && !isAdmin && hasRoom && approved });
+    out.push({ to: "/signals", label: "Сигнали", show: !!user && !isAdmin && hasRoom && approved });
 
     // manager
-    out.push({ to: "/reports", label: "Справки", show: !!user && hasRoom && approved && isManager });
-    out.push({ to: "/residents", label: "Живущи", show: !!user && hasRoom && approved && isManager });
+    out.push({ to: "/reports", label: "Справки", show: !!user && !isAdmin && hasRoom && approved && isManager });
+    out.push({ to: "/residents", label: "Живущи", show: !!user && !isAdmin && hasRoom && approved && isManager });
 
     // admin
-    out.push({ to: "/admin", label: "Admin", show: !!user && isAdmin });
-    out.push({ to: "/admin/rooms", label: "Rooms", show: !!user && isAdmin });
+    out.push({ to: "/admin", label: "Админ", show: !!user && isAdmin });
+    out.push({ to: "/admin/rooms", label: "Входове", show: !!user && isAdmin });
 
     return out.filter((x) => x.show);
-  }, [user, hasRoom, approved, isManager, isAdmin]);
+  }, [user, hasRoom, approved, isManager, isAdmin, isResident]);
 
   const primary = links.slice(0, 5);
   const secondary = links.slice(5);
 
   return (
-    <header className="sticky top-0 z-30 bg-white/85 backdrop-blur border-b border-slate-200">
+    <header className="app-navbar sticky top-0 z-30">
       <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
         <Link to="/" className="flex items-center gap-3" onClick={closeAll}>
-          <div className="h-10 w-10 rounded-2xl bg-slate-900 flex items-center justify-center shadow-sm">
-            <span className="text-white font-black text-lg">ОД</span>
-          </div>
+          <img
+            src="/Logo.png"
+            alt="Online Domoupravitel logo"
+            className="h-10 w-10 rounded-2xl object-contain border border-slate-200 bg-white p-1 shadow-sm"
+          />
           <div className="leading-tight min-w-0">
             <div className="font-semibold text-slate-900">Онлайн Домоуправител</div>
             <div className="text-xs text-slate-500">
-              {user ? `${user.name} • ${user.role}` : "Вход • Регистрация"}
+              {user ? `${user.name} • ${roleLabel(user.role)}` : "Вход • Регистрация"}
             </div>
           </div>
         </Link>
@@ -107,13 +116,13 @@ export default function Navbar() {
                 onClick={() => setMoreOpen((v) => !v)}
                 aria-haspopup="menu"
                 aria-expanded={moreOpen}
-                className="px-3 py-2 rounded-2xl text-sm font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition"
+                className="px-3 py-2 rounded-2xl text-sm font-semibold border border-transparent text-slate-700 hover:text-slate-900 hover:bg-white/80 hover:border-emerald-200/90 transition"
               >
                 Още <span className="text-slate-500">▾</span>
               </button>
 
               {moreOpen && (
-                <div className="absolute right-0 mt-2 w-52 rounded-2xl border border-slate-200 bg-white shadow-sm p-2">
+                <div className="absolute right-0 mt-2 w-52 rounded-2xl border border-[rgba(11,69,50,0.2)] bg-[rgba(247,255,241,0.96)] shadow-[0_14px_28px_rgba(7,49,74,0.14)] p-2 backdrop-blur">
                   <div className="text-[11px] font-semibold text-slate-500 px-2 py-1">
                     Още секции
                   </div>
@@ -131,7 +140,7 @@ export default function Navbar() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setMobileOpen((v) => !v)}
-            className="lg:hidden rounded-2xl px-3 py-2 text-sm font-semibold border border-slate-300 text-slate-900 hover:bg-slate-100 transition"
+            className="lg:hidden rounded-2xl px-3 py-2 text-sm font-semibold border border-[rgba(11,69,50,0.28)] text-[#0f3f35] bg-[rgba(252,255,248,0.78)] hover:bg-white/95 transition shadow-sm"
             aria-label="Меню"
             aria-expanded={mobileOpen}
           >
@@ -142,13 +151,13 @@ export default function Navbar() {
             <>
               <Link
                 to="/login"
-                className="hidden md:inline rounded-2xl px-4 py-2 text-sm font-semibold border border-slate-300 text-slate-900 hover:bg-slate-100 transition"
+                className="hidden md:inline rounded-2xl px-4 py-2 text-sm font-semibold border border-[rgba(11,69,50,0.28)] text-[#0f3f35] bg-[rgba(252,255,248,0.78)] hover:bg-white/95 transition shadow-sm"
               >
                 Вход
               </Link>
               <Link
                 to="/register"
-                className="hidden md:inline rounded-2xl px-4 py-2 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 transition shadow-sm"
+                className="hidden md:inline rounded-2xl px-4 py-2 text-sm font-semibold text-[#f4ffe8] border border-[rgba(7,49,74,0.4)] bg-[linear-gradient(135deg,#0a4a79_0%,#0f6c5b_55%,#5b9d27_100%)] shadow-[0_10px_24px_rgba(7,49,74,0.24)] transition"
               >
                 Регистрация
               </Link>
@@ -158,7 +167,7 @@ export default function Navbar() {
               <GhostBtn
                 onClick={() => {
                   closeAll();
-                  navigate("/");
+                  navigateWithTransition(navigate, "/");
                 }}
               >
                 Начало
@@ -167,9 +176,9 @@ export default function Navbar() {
                 onClick={() => {
                   logout();
                   closeAll();
-                  navigate("/");
+                  navigateWithTransition(navigate, "/");
                 }}
-                className="rounded-2xl px-4 py-2 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 transition shadow-sm"
+                className="rounded-2xl px-4 py-2 text-sm font-semibold text-[#f4ffe8] border border-[rgba(7,49,74,0.4)] bg-[linear-gradient(135deg,#0a4a79_0%,#0f6c5b_55%,#5b9d27_100%)] shadow-[0_10px_24px_rgba(7,49,74,0.24)] transition"
               >
                 Изход
               </button>
@@ -179,7 +188,7 @@ export default function Navbar() {
       </div>
 
       {mobileOpen && (
-        <div className="lg:hidden border-t border-slate-200 bg-white">
+        <div className="app-navbar-mobile lg:hidden">
           <div className="max-w-6xl mx-auto px-4 py-3 space-y-1">
             <div className="flex items-center justify-between gap-2 pb-2">
               <div className="text-xs text-slate-500">
@@ -208,14 +217,14 @@ export default function Navbar() {
                 <Link
                   to="/login"
                   onClick={closeAll}
-                  className="inline-flex items-center justify-center rounded-2xl px-4 py-2 text-sm font-semibold border border-slate-300 text-slate-900 hover:bg-slate-100 transition"
+                  className="inline-flex items-center justify-center rounded-2xl px-4 py-2 text-sm font-semibold border border-[rgba(11,69,50,0.28)] text-[#0f3f35] bg-[rgba(252,255,248,0.78)] hover:bg-white/95 transition shadow-sm"
                 >
                   Вход
                 </Link>
                 <Link
                   to="/register"
                   onClick={closeAll}
-                  className="inline-flex items-center justify-center rounded-2xl px-4 py-2 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 transition shadow-sm"
+                  className="inline-flex items-center justify-center rounded-2xl px-4 py-2 text-sm font-semibold text-[#f4ffe8] border border-[rgba(7,49,74,0.4)] bg-[linear-gradient(135deg,#0a4a79_0%,#0f6c5b_55%,#5b9d27_100%)] shadow-[0_10px_24px_rgba(7,49,74,0.24)] transition"
                 >
                   Регистрация
                 </Link>
@@ -227,3 +236,6 @@ export default function Navbar() {
     </header>
   );
 }
+
+
+

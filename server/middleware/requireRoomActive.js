@@ -5,10 +5,7 @@ export default async function requireRoomActive(req, res, next) {
     if (!req.user) return res.status(401).json({ message: "Няма потребител" });
     if (!req.user.roomId) return res.status(403).json({ message: "Нямате избрана стая" });
 
-    const role = String(req.user.role || "").toLowerCase();
-    const isAdmin = role === "admin";
-    const isManager = role === "manager";
-    const isResident = role === "resident";
+    const isResident = String(req.user.role || "").toLowerCase() === "resident";
 
     // ✅ Resident трябва да е одобрен
     // (manager/admin може да минава дори ако memberStatus е крив)
@@ -36,12 +33,9 @@ export default async function requireRoomActive(req, res, next) {
       subscriptionExpires: room.subscriptionExpires,
     };
 
-    // ✅ ако НЕ е активен входът:
-    // - manager/admin: пускаме, за да може да управлява/поднови
-    // - resident: спираме
+    // ✅ ако НЕ е активен входът: секциите остават заключени,
+    // докато не се поднови абонаментът.
     if (!active) {
-      if (isAdmin || isManager) return next();
-
       return res.status(402).json({
         message: "Входът не е активен (trial/абонамент изтекъл).",
         subscription: req.roomSubscription,

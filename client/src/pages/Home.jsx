@@ -1,19 +1,15 @@
-import { Link } from "react-router-dom";
+﻿import { useEffect, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../store/auth";
-import SiteFooter from "../components/SiteFooter";
+import "./Home.css";
 
-function Pill({ children, tone = "neutral" }) {
-  const map = {
-    neutral: "border-slate-200 bg-white text-slate-700",
-    soft: "border-slate-200 bg-slate-50 text-slate-700",
-    accent: "border-emerald-200 bg-emerald-50 text-emerald-900",
-    ink: "border-slate-300 bg-white text-slate-900",
-  };
-
+function Badge({ children, accent = false }) {
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium shadow-sm ${
-        map[tone] || map.neutral
+      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${
+        accent
+          ? "border-[color:var(--od-green-soft)] bg-[color:var(--od-green-soft)] text-[color:var(--od-green-deep)]"
+          : "border-slate-200/85 bg-[rgba(248,255,241,0.86)] text-slate-700"
       }`}
     >
       {children}
@@ -21,373 +17,411 @@ function Pill({ children, tone = "neutral" }) {
   );
 }
 
-function Stat({ label, value, hint }) {
+function MetricCard({ label, value, hint, delayClass = "" }) {
   return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="text-xs font-semibold text-slate-500">{label}</div>
-      <div className="mt-2 text-2xl font-black tracking-tight text-slate-900">{value}</div>
-      {hint ? <div className="mt-2 text-xs leading-relaxed text-slate-600">{hint}</div> : null}
+    <div className={`home-card home-fade ${delayClass} p-4 sm:p-5`}>
+      <div className="text-[11px] uppercase tracking-[0.12em] text-slate-500">{label}</div>
+      <div className="mt-2 text-2xl font-extrabold text-slate-900">{value}</div>
+      <div className="mt-1 text-xs text-slate-600">{hint}</div>
     </div>
   );
 }
 
-function Feature({ title, desc, meta }) {
+function SectionHead({ eyebrow, title, subtitle }) {
   return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-md transition">
-      <div className="flex items-start justify-between gap-4">
-        <div className="text-base font-semibold text-slate-900">{title}</div>
-        {meta ? <Pill tone="soft">{meta}</Pill> : null}
-      </div>
-      <div className="mt-3 text-sm leading-relaxed text-slate-600">{desc}</div>
+    <div className="home-fade">
+      <div className="text-[11px] uppercase tracking-[0.12em] font-bold text-[color:var(--od-blue)]">{eyebrow}</div>
+      <h2 className="home-title mt-2 text-3xl sm:text-4xl text-slate-900">{title}</h2>
+      <p className="mt-3 max-w-3xl text-sm sm:text-base text-slate-700 leading-relaxed">{subtitle}</p>
     </div>
   );
 }
 
-function Step({ n, title, desc }) {
+function StepCard({ n, title, desc, delayClass }) {
   return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-      <div className="flex items-start gap-4">
-        <div className="h-10 w-10 rounded-2xl bg-slate-900 text-white flex items-center justify-center text-sm font-black">
-          {n}
-        </div>
-        <div>
-          <div className="text-sm font-semibold text-slate-900">{title}</div>
-          <div className="mt-1 text-sm leading-relaxed text-slate-600">{desc}</div>
-        </div>
+    <div className={`home-card home-step-card home-fade ${delayClass}`}>
+      <div className="home-step-dot">{n}</div>
+      <div>
+        <div className="font-bold text-slate-900">{title}</div>
+        <p className="mt-2 text-sm text-slate-600 leading-relaxed">{desc}</p>
       </div>
     </div>
   );
 }
 
-function PricingCard({ title, price, subtitle, items, primary, ctaText }) {
+function FeatureTile({ icon, title, desc, delayClass = "" }) {
   return (
-    <div
-      className={`rounded-3xl border p-7 shadow-sm transition ${
-        primary ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white text-slate-900"
-      }`}
-    >
-      <div className="flex items-start justify-between gap-4">
+    <div className={`home-card home-feature-tile home-fade ${delayClass}`}>
+      <div className="home-feature-icon">{icon}</div>
+      <div>
+        <div className="font-bold text-slate-900">{title}</div>
+        <p className="mt-2 text-sm text-slate-600 leading-relaxed">{desc}</p>
+      </div>
+    </div>
+  );
+}
+
+function PricingCard({ title, price, subtitle, items, featured }) {
+  return (
+    <div className={`home-fade rounded-3xl border p-6 sm:p-7 ${featured ? "home-pricing-featured" : "home-card"}`}>
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <div className={`text-sm font-semibold ${primary ? "text-white/90" : "text-slate-700"}`}>{title}</div>
-          <div className="mt-2 text-4xl font-black tracking-tight">{price}</div>
-          <div className={`mt-2 text-sm leading-relaxed ${primary ? "text-white/80" : "text-slate-600"}`}>
-            {subtitle}
-          </div>
+          <div className={`text-sm font-bold ${featured ? "text-white/85" : "text-slate-700"}`}>{title}</div>
+          <div className={`mt-2 text-4xl font-extrabold ${featured ? "text-white" : "text-slate-900"}`}>{price}</div>
+          <p className={`mt-2 text-sm leading-relaxed ${featured ? "text-white/85" : "text-slate-600"}`}>{subtitle}</p>
         </div>
-        {primary && (
-          <span className="rounded-full bg-white/10 border border-white/20 px-3 py-1 text-xs font-semibold">
-            Препоръчано
+        {featured && (
+          <span className="rounded-full border border-white/30 bg-white/15 px-3 py-1 text-xs font-bold text-white">
+            Най-избирано
           </span>
         )}
       </div>
 
-      <ul className={`mt-6 space-y-2 text-sm ${primary ? "text-white/85" : "text-slate-700"}`}>
-        {items.map((x, i) => (
-          <li key={i} className="flex gap-2">
-            <span className={`${primary ? "text-white/80" : "text-slate-900"} font-bold`}>•</span>
-            <span>{x}</span>
+      <ul className={`mt-5 space-y-2 text-sm ${featured ? "text-white/90" : "text-slate-700"}`}>
+        {items.map((item) => (
+          <li key={item} className="flex items-start gap-2">
+            <span className={`mt-[2px] text-xs ${featured ? "text-white" : "text-[color:var(--od-green-deep)]"}`}>●</span>
+            <span>{item}</span>
           </li>
         ))}
       </ul>
 
-      <div className="mt-7">
-        <Link
-          to="/register"
-          className={`inline-flex w-full items-center justify-center rounded-2xl px-5 py-3 text-sm font-semibold transition ${
-            primary ? "bg-white text-slate-900 hover:bg-slate-100" : "bg-slate-900 text-white hover:bg-slate-800"
-          }`}
-        >
-          {ctaText || "Започни"}
-        </Link>
-      </div>
+      <Link
+        to="/register"
+        className={`mt-6 inline-flex w-full items-center justify-center rounded-2xl px-5 py-3 text-sm font-bold transition ${
+          featured ? "bg-white text-slate-900 hover:bg-slate-100" : "home-btn-primary text-white"
+        }`}
+      >
+        Започни
+      </Link>
     </div>
   );
 }
 
 export default function Home() {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const authTimerRef = useRef(null);
+  const [pendingAuthRoute, setPendingAuthRoute] = useState("");
+  const [authLeaving, setAuthLeaving] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (authTimerRef.current) {
+        window.clearTimeout(authTimerRef.current);
+      }
+    };
+  }, []);
+
+  const goAuth = (to) => (e) => {
+    if (pendingAuthRoute) return;
+    if (e.defaultPrevented) return;
+    if (e.button !== 0) return;
+    if (e.metaKey || e.altKey || e.ctrlKey || e.shiftKey) return;
+
+    e.preventDefault();
+    setPendingAuthRoute(to);
+
+    const runNavigate = () => navigate(to);
+
+    if (typeof document !== "undefined" && "startViewTransition" in document) {
+      document.startViewTransition(runNavigate);
+      return;
+    }
+
+    setAuthLeaving(true);
+    authTimerRef.current = window.setTimeout(runNavigate, 240);
+  };
+
+  const authClass = (base, to) => `${base} home-auth-link ${pendingAuthRoute === to ? "home-auth-link-going" : ""}`;
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
-      <div className="flex-1">
-        <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/80 backdrop-blur">
-          <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
-            <Link to="/" className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-black">
-                OD
-              </div>
-              <div>
-                <div className="text-sm font-semibold text-slate-900">Онлайн Домоуправител</div>
-                <div className="text-xs text-slate-500">Плащания • Обяви • Сигнали • Справки</div>
-              </div>
-            </Link>
-
-            <div className="flex items-center gap-2">
-              {user ? (
-                <Link
-                  to="/dashboard"
-                  className="rounded-2xl px-5 py-2.5 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 transition"
-                >
-                  Към таблото
-                </Link>
-              ) : (
-                <>
-                  <Link
-                    to="/login"
-                    className="rounded-2xl px-5 py-2.5 text-sm font-semibold border border-slate-300 text-slate-900 hover:bg-slate-100 transition"
-                  >
-                    Вход
-                  </Link>
-                  <Link
-                    to="/register"
-                    className="rounded-2xl px-5 py-2.5 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 transition"
-                  >
-                    Регистрация
-                  </Link>
-                </>
-              )}
+    <div className={`home-page min-h-screen flex flex-col text-slate-900 ${authLeaving ? "home-auth-leaving" : ""}`}>
+      <div className="home-ambient home-ambient-a" aria-hidden />
+      <div className="home-ambient home-ambient-b" aria-hidden />
+      <header className="home-header sticky top-0 z-30">
+        <div className="max-w-6xl mx-auto px-4 py-3.5 flex items-center justify-between gap-3">
+          <Link to="/" className="flex items-center gap-3">
+            <img src="/Logo.png" alt="Онлайн Домоуправител" className="h-11 w-11 rounded-2xl object-contain bg-white p-1" />
+            <div>
+              <div className="text-sm font-bold text-slate-900">Онлайн Домоуправител</div>
+              <div className="text-xs text-slate-500">Подреден вход. Ясни правила. Спокойствие.</div>
             </div>
-          </div>
-        </header>
+          </Link>
 
-        <section className="max-w-6xl mx-auto px-4 pt-10 pb-8">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            <div className="lg:col-span-7">
-              <div className="flex flex-wrap gap-2">
-                <Pill tone="soft">Достъп с код + одобрение</Pill>
-                <Pill tone="soft">Изолация по вход (room)</Pill>
-                <Pill tone="accent">Stripe плащания</Pill>
-              </div>
-
-              <h1 className="mt-6 text-4xl sm:text-5xl font-black tracking-tight leading-tight">
-                Управление на входа, което не разчита на бележки и чатове.
-              </h1>
-
-              <p className="mt-4 text-base leading-relaxed text-slate-700">
-                Онлайн Домоуправител събира на едно място обяви, начисления, сигнали и справки за конкретен вход.
-                Достъпът е защитен: живущите влизат с код и се одобряват от домоуправителя. Всеки вижда само това, което е
-                за неговия вход.
-              </p>
-
-              <div className="mt-7 flex flex-col sm:flex-row gap-3">
+          <div className="flex items-center gap-2">
+            {user ? (
+              <Link to="/dashboard" className="home-btn-primary rounded-2xl px-5 py-2.5 text-sm font-bold text-white">
+                Към таблото
+              </Link>
+            ) : (
+              <>
+                <Link
+                  to="/login"
+                  onClick={goAuth("/login")}
+                  className={authClass(
+                    "rounded-2xl px-4 sm:px-5 py-2.5 text-sm font-bold border border-slate-300 text-slate-800 hover:bg-white transition",
+                    "/login"
+                  )}
+                >
+                  Вход
+                </Link>
                 <Link
                   to="/register"
-                  className="inline-flex items-center justify-center rounded-2xl px-6 py-3.5 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 transition"
+                  onClick={goAuth("/register")}
+                  className={authClass("home-btn-primary rounded-2xl px-4 sm:px-5 py-2.5 text-sm font-bold text-white", "/register")}
                 >
-                  Започни (1 месец тест)
+                  Регистрация
+                </Link>
+              </>
+            )}
+          </div>
+        </div>
+      </header>
+      <div className="home-header-blend" aria-hidden />
+
+      <main className="flex-1">
+        <section className="max-w-6xl mx-auto px-4 pt-8 sm:pt-12 pb-12">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-stretch">
+            <div className="lg:col-span-7 home-fade">
+              <div className="flex flex-wrap gap-2">
+                <Badge>Достъп с код и одобрение</Badge>
+                <Badge>Отделни данни за всеки вход</Badge>
+                <Badge accent>Плащане с карта</Badge>
+              </div>
+
+              <h1 className="home-title mt-5 text-4xl sm:text-5xl lg:text-6xl leading-[1.05] text-slate-900">
+                Модерен вход без хаос в чатове и тетрадки.
+              </h1>
+
+              <p className="mt-4 text-base sm:text-lg text-slate-700 leading-relaxed max-w-2xl">
+                Всичко важно за входа е на едно място: съобщения, такси, сигнали и справки. Всеки вижда само
+                информацията за своя вход.
+              </p>
+
+              <div className="mt-6 flex flex-col sm:flex-row gap-3">
+                <Link
+                  to="/register"
+                  onClick={goAuth("/register")}
+                  className={authClass("home-btn-primary rounded-2xl px-6 py-3.5 text-sm font-bold text-white text-center", "/register")}
+                >
+                  Започни с 1 месец тест
                 </Link>
                 <Link
                   to="/login"
-                  className="inline-flex items-center justify-center rounded-2xl px-6 py-3.5 text-sm font-semibold border border-slate-300 text-slate-900 hover:bg-slate-100 transition"
+                  onClick={goAuth("/login")}
+                  className={authClass(
+                    "rounded-2xl px-6 py-3.5 text-sm font-bold border border-slate-300 text-slate-800 hover:bg-white transition text-center",
+                    "/login"
+                  )}
                 >
                   Вече имам акаунт
                 </Link>
               </div>
 
-              <div className="mt-7 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <Stat label="Структура" value="Вход → стая" hint="Данните не се смесват между различни входове." />
-                <Stat label="Плащания" value="Stripe Checkout" hint="Реален webhook и автоматично отчитане." />
-                <Stat label="Сигнали" value="Статуси" hint="Нов → в процес → решен / отхвърлен." />
-              </div>
-
-              <div className="mt-7 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="text-xs font-semibold text-slate-500">За кого е</div>
-                <div className="mt-2 text-sm leading-relaxed text-slate-700">
-                  Модулите са направени за реални ситуации: такса вход, ремонт, авария, недовършена услуга, обява за
-                  събрание, прозрачност по разходи. Домоуправителят има контрол и история, а живущите имат яснота без да
-                  търсят в чатове.
-                </div>
-
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <Pill tone="ink">Домоуправител</Pill>
-                  <Pill tone="ink">Живущ</Pill>
-                  <Pill tone="ink">Админ</Pill>
-                </div>
+              <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <MetricCard
+                  label="Достъп"
+                  value="Код + одобрение"
+                  hint="Само реални живущи влизат в стаята."
+                  delayClass="home-delay-1"
+                />
+                <MetricCard label="Плащания" value="Онлайн и бързо" hint="Ясно плащане към входа с карта." delayClass="home-delay-2" />
+                <MetricCard label="Сигнали" value="Със статус" hint="Ново, в процес, решено, отхвърлено." delayClass="home-delay-3" />
               </div>
             </div>
 
-            <div className="lg:col-span-5 space-y-4">
-              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="text-xs text-slate-500">Как протича работата</div>
-                <div className="mt-2 text-lg font-semibold text-slate-900">Ясен процес, без излишна сложност</div>
-                <p className="mt-2 text-sm leading-relaxed text-slate-600">
-                  Регистрация → стая → код → заявка → одобрение. След това начисленията, сигналите и справките са на едно
-                  място. Данните са изолирани по вход и не се смесват между различни сгради или входове.
-                </p>
+            <div className="lg:col-span-5 home-fade home-delay-2">
+              <div className="home-showcase">
+                <div className="home-showcase-header">
+                  <div className="text-xs font-bold uppercase tracking-[0.1em] text-[color:var(--od-blue)]">В реална среда</div>
+                  <div className="text-sm text-slate-700">Спокоен и подреден процес за целия вход</div>
+                </div>
 
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {["Обяви", "Плащания", "Сигнали", "Справки"].map((x) => (
-                    <span
-                      key={x}
-                      className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700"
-                    >
-                      {x}
-                    </span>
-                  ))}
+                <div className="home-logo-panel">
+                  <img src="/Logo.png" alt="Илюстрация Онлайн Домоуправител" className="w-full max-w-[330px] mx-auto" />
+                </div>
+
+                <div className="home-role-grid">
+                  <div className="home-role-chip">
+                    <span>Домоуправител</span>
+                    <b>Контрол на входа</b>
+                  </div>
+                  <div className="home-role-chip">
+                    <span>Живущ</span>
+                    <b>Ясен достъп до важната информация</b>
+                  </div>
+                  <div className="home-role-chip home-role-chip-wide">
+                    <span>Админ</span>
+                    <b>Поддръжка и одобрения</b>
+                  </div>
                 </div>
               </div>
-
-              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="text-xs text-slate-500">Защо не е просто чат</div>
-                <p className="mt-2 text-sm leading-relaxed text-slate-600">
-                  Информацията във входа често се губи в чатове и стари съобщения. Тук всяко нещо си има място – обяви,
-                  плащания, сигнали и справки, с история и проследимост.
-                </p>
-
-                <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
-                  Достъпът до реалните данни е само за одобрени потребители в конкретния вход.
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="max-w-6xl mx-auto px-4 pb-10">
-          <div className="flex items-end justify-between gap-4 mb-5">
-            <div>
-              <h2 className="text-2xl font-bold">Старт за минути</h2>
-              <p className="text-sm text-slate-600 mt-1">Кратко, ясно и без настройки, които объркват.</p>
-            </div>
-            <div className="hidden md:flex gap-2">
-              <Pill tone="soft">Код за вход</Pill>
-              <Pill tone="soft">Одобрение</Pill>
-              <Pill tone="soft">Роли</Pill>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Step n="1" title="Регистрация" desc="Домоуправителят кандидатства и се одобрява от администратор." />
-            <Step n="2" title="Стая и код" desc="Създаваш стая за входа и споделяш кода на живущите." />
-            <Step n="3" title="Одобрение" desc="Само одобрени профили виждат и използват функционалностите." />
-          </div>
-
-          <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="text-xs font-semibold text-slate-500">Детайл, който прави разлика</div>
-            <div className="mt-2 text-sm leading-relaxed text-slate-700">
-              Дори да имате един блок с няколко входа, информацията остава разделена. Вход А не вижда нищо за вход Б.
-              Това намалява хаоса и спира типичните проблеми с достъп и “кой какво е видял”.
             </div>
           </div>
         </section>
 
         <section className="max-w-6xl mx-auto px-4 pb-12">
-          <div className="mb-5">
-            <h2 className="text-2xl font-bold">Модули и функционалности</h2>
-            <p className="text-sm text-slate-600 mt-1">
-              Целта е да покрива ежедневните неща във входа, с ясна история и отчетност.
-            </p>
+          <SectionHead
+            eyebrow="Процес"
+            title="Стартираш бързо, без объркване"
+            subtitle="Процесът е кратък и подреден. Всеки вход има собствена стая и собствена история."
+          />
+
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4 relative">
+            <div className="home-step-line" aria-hidden />
+            <StepCard
+              n="1"
+              title="Регистрация и заявка"
+              desc="Домоуправителят подава заявка за своя вход и получава одобрение."
+              delayClass="home-delay-1"
+            />
+            <StepCard
+              n="2"
+              title="Код за входа"
+              desc="Създава се стая, в която живущите влизат с код и апартамент."
+              delayClass="home-delay-2"
+            />
+            <StepCard
+              n="3"
+              title="Одобрение на живущи"
+              desc="Само одобрените профили виждат пълната информация в стаята."
+              delayClass="home-delay-3"
+            />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <Feature
-              title="Обяви"
-              meta="Информация"
-              desc="Публикации за входа: събрания, ремонти, напомняния. Живущите виждат само това, което е за тях."
+          <div className="mt-4 home-card p-5 sm:p-6 home-fade home-delay-2">
+            <div className="text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--od-blue)]">Важно</div>
+            <p className="mt-2 text-sm sm:text-base text-slate-700 leading-relaxed">
+              Ако в блока има няколко входа, данните остават разделени. Вход А не вижда информацията на вход Б.
+            </p>
+          </div>
+        </section>
+
+        <section className="max-w-6xl mx-auto px-4 pb-12">
+          <SectionHead
+            eyebrow="Функционалности"
+            title="Всичко нужно за ежедневието на входа"
+            subtitle="Публични съобщения, такси, сигнали и отчетност в един ясен работен поток."
+          />
+
+          <div className="home-bento mt-6">
+            <FeatureTile
+              icon="О"
+              title="Обяви за входа"
+              desc="Събрания, ремонти, срокове и напомняния с ясна история."
+              delayClass="home-delay-1"
             />
-            <Feature
-              title="Начисления"
-              meta="Такси"
-              desc="Домоуправителят създава начисление, живущите плащат през Stripe Checkout. След успех webhook записва плащането."
+            <FeatureTile
+              icon="Т"
+              title="Такси и плащания"
+              desc="Домоуправителят задава такса, живущите плащат удобно онлайн."
+              delayClass="home-delay-2"
             />
-            <Feature
+            <FeatureTile
+              icon="С"
               title="Сигнали"
-              meta="Поддръжка"
-              desc="Подаване на проблеми и проследяване на статуси: нов, в процес, решен, отхвърлен. Живущите виждат само своите."
+              desc="Проблемите се подават бързо и се следят по статус до решение."
+              delayClass="home-delay-3"
             />
-            <Feature
+            <FeatureTile
+              icon="Р"
               title="Справки"
-              meta="Отчетност"
-              desc="Вътрешен баланс, история на разходи и прегледи. Подходящо за прозрачност и отчет към живущите."
+              desc="По-ясна картина за разходи, движения и текущо състояние."
+              delayClass="home-delay-1"
             />
-            <Feature
+            <FeatureTile
+              icon="К"
               title="Контрол на достъп"
-              meta="Сигурност"
-              desc="Код + одобрение + роли. Достъпът е ограничен, а данните не се виждат от външни хора."
+              desc="Код, одобрение и роли пазят информацията само за правилните хора."
+              delayClass="home-delay-2"
             />
-            <Feature
-              title="Роли и права"
-              meta="Управление"
-              desc="Живущ, домоуправител и админ с различни права. Това държи ред в работата и отговорностите."
+            <FeatureTile
+              icon="П"
+              title="Ясни роли"
+              desc="Админ, Домоуправител и Живущ с точни права и отговорности."
+              delayClass="home-delay-3"
             />
           </div>
         </section>
 
         <section className="max-w-6xl mx-auto px-4 pb-12">
-          <div className="mb-5">
-            <h2 className="text-2xl font-bold">Абонамент</h2>
-            <p className="text-sm text-slate-600 mt-1 leading-relaxed">
-              Има тест период и след него таксуване според броя апартаменти. Моделът е удобен за входове, защото мащабира
-              справедливо.
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Pill tone="accent">1 месец тест</Pill>
-              <Pill tone="soft">1 € / апартамент / месец</Pill>
-              <Pill tone="soft">EUR (€)</Pill>
-            </div>
-          </div>
+          <SectionHead
+            eyebrow="Абонамент"
+            title="Прост и предвидим модел"
+            subtitle="1 месец безплатен тест. След това цената зависи от броя апартаменти във входа."
+          />
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
             <PricingCard
               title="Тест период"
               price="0 €"
-              subtitle="Пробваш всички модули 30 дни. Подходящо за първо пускане във входа."
-              items={["Стая (вход) + код", "Одобрение на живущи", "Обяви, начисления, сигнали, справки", "Роли и контрол на достъп"]}
-              ctaText="Започни теста"
+              subtitle="Пробваш цялата система за 30 дни и виждаш дали пасва на входа."
+              items={[
+                "Стая за входа и код за достъп",
+                "Одобрение на живущи",
+                "Обяви, такси, сигнали и справки",
+                "Ясни роли и права",
+              ]}
             />
-
             <PricingCard
               title="Активен абонамент"
               price="1 € / апартамент"
-              subtitle="Таксуване спрямо броя апартаменти във входа. Ясно и лесно за обяснение към живущите."
-              primary
-              items={["Пълен достъп за входа", "Stripe плащания", "История и справки", "Подреден процес за работа"]}
-              ctaText="Регистрация"
+              subtitle="След теста плащането се изчислява справедливо според реалния брой апартаменти."
+              items={[
+                "Пълен достъп за всички одобрени",
+                "Онлайн плащане с карта",
+                "История и отчетност",
+                "Подредена работа във входа",
+              ]}
+              featured
             />
           </div>
 
-          <div className="mt-4 text-xs text-slate-500">Пример: 24 апартамента → 24 € / месец след тест периода.</div>
+          <div className="mt-3 text-xs text-slate-500">Пример: 30 апартамента = 30 € на месец след тест периода.</div>
         </section>
 
         <section className="max-w-6xl mx-auto px-4 pb-14">
-          <div className="rounded-3xl border border-slate-200 bg-white p-7 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-5">
+          <div className="home-cta home-fade">
             <div>
-              <div className="text-2xl font-bold text-slate-900">Готов ли си да го пуснеш за входа?</div>
-              <div className="text-sm text-slate-600 mt-2 leading-relaxed">
-                Регистрация → стая → код → одобрение. След това всичко е подредено и проследимо.
-              </div>
+              <h3 className="home-title text-3xl sm:text-4xl text-slate-900">Готови ли сте да подредите входа?</h3>
+              <p className="mt-3 text-sm sm:text-base text-slate-700 leading-relaxed">
+                Стартирате за минути и веднага имате работеща среда за комуникация, такси и сигнали.
+              </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               {user ? (
-                <Link
-                  to="/dashboard"
-                  className="rounded-2xl px-6 py-3 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 transition"
-                >
+                <Link to="/dashboard" className="home-btn-primary rounded-2xl px-6 py-3 text-sm font-bold text-white text-center">
                   Към таблото
                 </Link>
               ) : (
                 <>
                   <Link
                     to="/register"
-                    className="rounded-2xl px-6 py-3 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 transition"
+                    onClick={goAuth("/register")}
+                    className={authClass("home-btn-primary rounded-2xl px-6 py-3 text-sm font-bold text-white text-center", "/register")}
                   >
                     Регистрация
                   </Link>
                   <Link
                     to="/login"
-                    className="rounded-2xl px-6 py-3 text-sm font-semibold border border-slate-300 text-slate-900 hover:bg-slate-100 transition"
+                    onClick={goAuth("/login")}
+                    className={authClass(
+                      "rounded-2xl px-6 py-3 text-sm font-bold border border-slate-300 text-slate-800 hover:bg-white transition text-center",
+                      "/login"
+                    )}
                   >
                     Вход
                   </Link>
                 </>
               )}
             </div>
+            <div className="home-contact-chip">
+              Контакт: <a href="tel:+359876227738">+359876227738</a>
+            </div>
           </div>
-
-          <div className="mt-6 text-xs text-slate-500">Реалните данни за входа се виждат само след вход, код и одобрение.</div>
         </section>
-      </div>
-
-      
+      </main>
     </div>
   );
 }

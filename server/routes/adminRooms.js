@@ -23,7 +23,7 @@ const requireAuth = async (req, res, next) => {
 };
 
 const requireAdmin = (req, res, next) => {
-  if (req.user?.role !== "admin") return res.status(403).json({ message: "Само admin" });
+  if (req.user?.role !== "admin") return res.status(403).json({ message: "Само Админ" });
   next();
 };
 
@@ -126,6 +126,117 @@ router.put("/rooms/:roomId/settings", requireAuth, requireAdmin, async (req, res
     });
   } catch (e) {
     res.status(500).json({ message: "Settings update error", error: e.message });
+  }
+});
+
+// ✅ GET /api/admin/rooms/:roomId/members
+// Детайл за членове на стаята + роля/статус
+router.get("/rooms/:roomId/members", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { roomId } = req.params;
+
+    const room = await Room.findById(roomId).lean();
+    if (!room) return res.status(404).json({ message: "Room not found" });
+
+    const ownerId = String(room.createdBy || "");
+    const usersInRoom = await User.find({ roomId: room._id })
+      .select("name email phone apartment role memberStatus")
+      .lean();
+
+    const usersById = new Map(usersInRoom.map((u) => [String(u._id), u]));
+    const members = [];
+
+    // 1) Вземаме members от room документа (ако има snapshots, пазим ги).
+    for (const m of room.members || []) {
+      const uid = m?.user ? String(m.user) : "";
+      const u = uid ? usersById.get(uid) : null;
+
+      members.push({
+        _id: u?._id || (uid || null),
+        name: m?.nameSnapshot || u?.name || "—",
+        email: u?.email || "—",
+        phone: m?.phoneSnapshot || u?.phone || "",
+        apartment: m?.apartment || u?.apartment || "",
+        role: u?.role || "resident",
+        memberStatus: m?.status || u?.memberStatus || "pending",
+        isRoomManager: !!(uid && ownerId && uid === ownerId),
+      });
+
+      if (uid) usersById.delete(uid);
+    }
+
+    // 2) Допълваме с users, които имат roomId, но ги няма в room.members.
+    for (const [uid, u] of usersById.entries()) {
+      members.push({
+        _id: u._id,
+        name: u.name || "—",
+        email: u.email || "—",
+        phone: u.phone || "",
+        apartment: u.apartment || "",
+        role: u.role || "resident",
+        memberStatus: u.memberStatus || "pending",
+        isRoomManager: !!(ownerId && uid === ownerId),
+      });
+    }
+
+    // 3) Ако домоуправителят липсва в горния списък, добавяме го изрично.
+    if (ownerId && !members.some((x) => String(x._id || "") === ownerId)) {
+      const owner = await User.findById(ownerId).select("name email phone apartment role memberStatus").lean();
+      if (owner) {
+        members.unshift({
+          _id: owner._id,
+          name: owner.name || "—",
+          email: owner.email || "—",
+          phone: owner.phone || "",
+          apartment: owner.apartment || "",
+          role: owner.role || "manager",
+          memberStatus: owner.memberStatus || "approved",
+          isRoomManager: true,
+        });
+      } else {
+        members.unshift({
+          _id: ownerId,
+          name: "Домоуправител (липсва профил)",
+          email: "—",
+          phone: "",
+          apartment: "",
+          role: "manager",
+          memberStatus: "approved",
+          isRoomManager: true,
+        });
+      }
+    }
+
+    const sorted = members.sort((a, b) => {
+      if (a.isRoomManager && !b.isRoomManager) return -1;
+      if (!a.isRoomManager && b.isRoomManager) return 1;
+
+      const aApt = String(a.apartment || "");
+      const bApt = String(b.apartment || "");
+      return aApt.localeCompare(bApt, "bg", { numeric: true, sensitivity: "base" });
+    });
+
+    const summary = {
+      total: sorted.length,
+      managerCount: sorted.filter((x) => x.isRoomManager).length,
+      residentCount: sorted.filter((x) => !x.isRoomManager).length,
+      approvedCount: sorted.filter((x) => x.memberStatus === "approved").length,
+      pendingCount: sorted.filter((x) => x.memberStatus === "pending").length,
+    };
+
+    res.json({
+      room: {
+        _id: room._id,
+        city: room.city,
+        building: room.building,
+        entrance: room.entrance,
+        code: room.code,
+      },
+      summary,
+      members: sorted,
+    });
+  } catch (e) {
+    res.status(500).json({ message: "Room members load error", error: e.message });
   }
 });
 

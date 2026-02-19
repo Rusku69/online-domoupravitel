@@ -123,7 +123,7 @@ export default function Admin() {
       <div className="flex-1 p-6">
         <div className="max-w-6xl mx-auto space-y-4">
           <PageHeader
-            title="Admin"
+            title="Админ"
             subtitle={
               <>
                 Тук се обработват заявки за домоуправител. Администраторът преглежда данните и одобрява или отказва.

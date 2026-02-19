@@ -3,6 +3,8 @@ import Room from "../models/Room.js";
 import User from "../models/User.js";
 import requireAuth from "../middleware/requireAuth.js";
 import requireVerifiedManager from "../middleware/requireVerifiedManager.js";
+import requireRoomActive from "../middleware/requireRoomActive.js";
+import requireRoomEmailVerified from "../middleware/requireRoomEmailVerified.js";
 
 const router = express.Router();
 
@@ -14,7 +16,7 @@ function makeCode(building, entrance) {
 }
 
 // ✅ POST /api/rooms/manager-request
-router.post("/manager-request", requireAuth, async (req, res) => {
+router.post("/manager-request", requireAuth, requireRoomEmailVerified, async (req, res) => {
   try {
     const u = req.user;
 
@@ -46,7 +48,7 @@ router.post("/manager-request", requireAuth, async (req, res) => {
     if (existing) {
       return res.status(409).json({
         message:
-          "За този вход вече има създадена стая. Само admin може да смени домоуправителя.",
+          "За този вход вече има създадена стая. Само Админ може да смени домоуправителя.",
       });
     }
 
@@ -58,7 +60,7 @@ router.post("/manager-request", requireAuth, async (req, res) => {
     u.managerRequestedAt = new Date();
     await u.save();
 
-    res.json({ message: "✅ Заявката е изпратена към admin." });
+    res.json({ message: "✅ Заявката е изпратена към Админ." });
   } catch (e) {
     res.status(500).json({ message: "Manager request error", error: e.message });
   }
@@ -100,7 +102,7 @@ router.get("/:roomId", requireAuth, async (req, res) => {
 });
 
 // ✅ JOIN room
-router.post("/join", requireAuth, async (req, res) => {
+router.post("/join", requireAuth, requireRoomEmailVerified, async (req, res) => {
   try {
     const u = req.user;
     const { code, apartment } = req.body;
@@ -141,7 +143,7 @@ router.post("/join", requireAuth, async (req, res) => {
 });
 
 // ✅ APPROVE member
-router.post("/approve", requireAuth, requireVerifiedManager, async (req, res) => {
+router.post("/approve", requireAuth, requireVerifiedManager, requireRoomActive, async (req, res) => {
   try {
     const manager = req.user;
     const { memberId } = req.body;
@@ -174,7 +176,7 @@ router.post("/approve", requireAuth, requireVerifiedManager, async (req, res) =>
 });
 
 // ✅ pending list by roomId
-router.get("/:roomId/pending", requireAuth, async (req, res) => {
+router.get("/:roomId/pending", requireAuth, requireRoomActive, async (req, res) => {
   try {
     const room = await Room.findById(req.params.roomId).populate(
       "members.user",
@@ -211,6 +213,7 @@ router.get(
   "/:roomId/members",
   requireAuth,
   requireVerifiedManager,
+  requireRoomActive,
   async (req, res) => {
     try {
       const room = await Room.findById(req.params.roomId)
@@ -295,6 +298,7 @@ router.patch(
   "/:roomId/members/:memberId/tag",
   requireAuth,
   requireVerifiedManager,
+  requireRoomActive,
   async (req, res) => {
     try {
       const { roomId, memberId } = req.params;
@@ -322,6 +326,7 @@ router.delete(
   "/:roomId/members/:memberId",
   requireAuth,
   requireVerifiedManager,
+  requireRoomActive,
   async (req, res) => {
     try {
       const { roomId, memberId } = req.params;
@@ -387,7 +392,7 @@ async function setApartmentsCount(req, res) {
 
   if (!isAdmin && room.apartmentsCount !== null) {
     return res.status(403).json({
-      message: "Броят вече е зададен. Само admin може да го променя.",
+      message: "Броят вече е зададен. Само Админ може да го променя.",
     });
   }
 
@@ -397,7 +402,7 @@ async function setApartmentsCount(req, res) {
   res.json({ message: "Запазено.", apartmentsCount: room.apartmentsCount });
 }
 
-router.put("/:roomId/apartments-count", requireAuth, async (req, res) => {
+router.put("/:roomId/apartments-count", requireAuth, requireRoomActive, async (req, res) => {
   try {
     await setApartmentsCount(req, res);
   } catch (e) {
@@ -407,7 +412,7 @@ router.put("/:roomId/apartments-count", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/:roomId/apartments-count", requireAuth, async (req, res) => {
+router.post("/:roomId/apartments-count", requireAuth, requireRoomActive, async (req, res) => {
   try {
     await setApartmentsCount(req, res);
   } catch (e) {
@@ -422,7 +427,7 @@ router.post("/:roomId/apartments-count", requireAuth, async (req, res) => {
 // =======================================================
 
 // ✅ GET finance data (manager creator only; admin може да гледа)
-router.get("/:roomId/finance", requireAuth, async (req, res) => {
+router.get("/:roomId/finance", requireAuth, requireRoomActive, async (req, res) => {
   try {
     const room = await Room.findById(req.params.roomId);
     if (!room) return res.status(404).json({ message: "Room not found" });
@@ -445,6 +450,7 @@ router.post(
   "/:roomId/finance/lock",
   requireAuth,
   requireVerifiedManager,
+  requireRoomActive,
   async (req, res) => {
     try {
       const { roomId } = req.params;
@@ -492,6 +498,7 @@ router.post(
   "/:roomId/finance/expense",
   requireAuth,
   requireVerifiedManager,
+  requireRoomActive,
   async (req, res) => {
     try {
       const { roomId } = req.params;

@@ -3,6 +3,7 @@ import api from "../lib/api";
 import { useAuth } from "../store/auth";
 import { PageHeader, HelpCard, ErrorBox, SuccessBox } from "../components/PageBits";
 import SiteFooter from "../components/SiteFooter";
+import { roleLabel } from "../lib/roles";
 
 export default function Account() {
   const { user, fetchUser } = useAuth();
@@ -130,7 +131,7 @@ export default function Account() {
                   <div className="font-semibold mt-4">Какво не се променя от тази страница</div>
                   <ul className="mt-2 list-disc pl-5 space-y-1">
                     <li>Град, блок, вход и апартамент (идват от стаята и членството).</li>
-                    <li>Роля и статус на членство (управляват се от домоуправител/admin процеса).</li>
+                    <li>Роля и статус на членство (управляват се от домоуправител/Админ процеса).</li>
                   </ul>
                 </div>
               </div>
@@ -292,7 +293,7 @@ export default function Account() {
 
               <HelpCard title="Роля и достъп">
                 <div className="text-sm text-slate-700 mt-2">
-                  Роля: <b>{user.role}</b>
+                  Роля: <b>{roleLabel(user.role)}</b>
                   <br />
                   Статус: <b>{user.memberStatus || "—"}</b>
                   <br />

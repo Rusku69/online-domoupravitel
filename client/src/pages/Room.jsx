@@ -3,7 +3,26 @@ import api from "../lib/api";
 import { useAuth } from "../store/auth";
 import SubscriptionBanner from "../components/SubscriptionBanner";
 import { Link } from "react-router-dom";
-import SiteFooter from "../components/SiteFooter";
+import { roleLabel } from "../lib/roles";
+
+const ROOM_VERIFY_ENFORCE_FROM = import.meta.env.VITE_ROOM_EMAIL_VERIFY_ENFORCE_FROM || "2026-02-12T00:00:00.000Z";
+
+function parseSafeDate(value) {
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function shouldRequireRoomEmailVerify(user) {
+  if (!user) return false;
+  if (user.mustVerifyEmailForRoomActions === true) return true;
+  if (user.mustVerifyEmailForRoomActions === false) return false;
+
+  const enforceFrom = parseSafeDate(ROOM_VERIFY_ENFORCE_FROM);
+  const createdAt = parseSafeDate(user.createdAt);
+
+  if (!enforceFrom || !createdAt) return false;
+  return createdAt >= enforceFrom;
+}
 
 function Badge({ children, tone = "gray" }) {
   const map = {
@@ -38,6 +57,7 @@ export default function Room() {
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
+  const [verifyLoading, setVerifyLoading] = useState(false);
 
   const isAdmin = user?.role === "admin";
   const isManager = user?.role === "manager";
@@ -45,6 +65,7 @@ export default function Room() {
 
   const isApproved = user?.memberStatus === "approved";
   const hasRoom = !!user?.roomId;
+  const requiresRoomEmailVerify = shouldRequireRoomEmailVerify(user) && !user?.emailVerified;
 
   const safePending = useMemo(() => (pending || []).filter(Boolean), [pending]);
 
@@ -99,6 +120,10 @@ export default function Room() {
       setErr("");
       setMsg("");
 
+      if (requiresRoomEmailVerify) {
+        return setErr("Потвърди имейла си, за да подаваш заявка за домоуправител.");
+      }
+
       if (!reqCity.trim() || !reqBuilding.trim() || !reqEntrance.trim()) {
         return setErr("Попълни град, блок и вход.");
       }
@@ -114,7 +139,7 @@ export default function Room() {
         apartment: reqApartment.trim(),
       });
 
-      setMsg("Заявката за домоуправител е изпратена. Изчакай admin одобрение.");
+      setMsg("Заявката за домоуправител е изпратена. Изчакай Админ одобрение.");
       await fetchUser();
       await loadRoomInfo();
     } catch (e) {
@@ -127,6 +152,11 @@ export default function Room() {
     try {
       setErr("");
       setMsg("");
+
+      if (requiresRoomEmailVerify) {
+        return setErr("Потвърди имейла си, за да се присъединиш към стая.");
+      }
+
       if (!codeInput.trim()) return setErr("Въведи код за стая.");
       if (!apartmentInput.trim()) return setErr("Въведи апартамент.");
 
@@ -152,6 +182,22 @@ export default function Room() {
       await loadRoomInfo();
     } catch (e) {
       setErr(e?.response?.data?.message || "Грешка при одобряване");
+    }
+  };
+
+  const resendVerify = async () => {
+    try {
+      setErr("");
+      setMsg("");
+      setVerifyLoading(true);
+
+      const res = await api.post("/api/auth/resend-verify-email");
+      setMsg(res?.data?.message || "Изпратен е имейл за потвърждение.");
+      await fetchUser();
+    } catch (e) {
+      setErr(e?.response?.data?.message || "Грешка при изпращане на имейл за потвърждение");
+    } finally {
+      setVerifyLoading(false);
     }
   };
 
@@ -204,7 +250,7 @@ export default function Room() {
                   {user.apartment ? ` • Ап: ${user.apartment}` : ""}
                 </div>
                 <div className="flex flex-wrap gap-2 mt-2">
-                  <Badge tone="sky">{user.role}</Badge>
+                  <Badge tone="sky">{roleLabel(user.role)}</Badge>
                   <Badge tone={isApproved ? "green" : "yellow"}>членство: {user.memberStatus || "pending"}</Badge>
                   {hasRoom && (
                     <Badge tone={subActive ? "green" : "red"}>абонамент: {subActive ? "активен" : "неактивен"}</Badge>
@@ -230,43 +276,6 @@ export default function Room() {
               </div>
             </div>
 
-            {/* Page index (за материал и по-дълго скролване) */}
-            <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-              <div className="font-semibold text-slate-900">Навигация</div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <a href="#status" className="rounded-full border border-slate-300 px-3 py-1 hover:bg-white transition">
-                  Статус
-                </a>
-                <a href="#join" className="rounded-full border border-slate-300 px-3 py-1 hover:bg-white transition">
-                  Достъп
-                </a>
-                <a
-                  href="#subscription"
-                  className="rounded-full border border-slate-300 px-3 py-1 hover:bg-white transition"
-                >
-                  Абонамент
-                </a>
-                <a
-                  href="#settings"
-                  className="rounded-full border border-slate-300 px-3 py-1 hover:bg-white transition"
-                >
-                  Настройки
-                </a>
-                <a
-                  href="#requests"
-                  className="rounded-full border border-slate-300 px-3 py-1 hover:bg-white transition"
-                >
-                  Заявки
-                </a>
-                <a
-                  href="#guidelines"
-                  className="rounded-full border border-slate-300 px-3 py-1 hover:bg-white transition"
-                >
-                  Насоки
-                </a>
-              </div>
-            </div>
-
             {loading && <p className="text-sm text-slate-500">Зареждане...</p>}
 
             {!loading && err && (
@@ -276,6 +285,22 @@ export default function Room() {
             {!loading && msg && (
               <div className="mb-4 text-sm text-emerald-900 bg-emerald-50 border border-emerald-200 rounded-2xl p-3">
                 {msg}
+              </div>
+            )}
+
+            {!hasRoom && requiresRoomEmailVerify && (
+              <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                <div className="font-semibold text-amber-900">Потвърди имейла си</div>
+                <div className="mt-1 text-sm text-amber-900/90">
+                  За този акаунт първо трябва да потвърдиш имейла, преди да можеш да влизаш в стая или да подаваш заявка за домоуправител.
+                </div>
+                <button
+                  onClick={resendVerify}
+                  disabled={verifyLoading}
+                  className="mt-3 rounded-2xl px-4 py-2 text-sm font-semibold border border-amber-300 text-amber-900 hover:bg-amber-100 disabled:opacity-60 transition"
+                >
+                  {verifyLoading ? "Изпращане..." : "Изпрати имейл за потвърждение"}
+                </button>
               </div>
             )}
 
@@ -315,7 +340,7 @@ export default function Room() {
                 >
                   Поднови абонамент
                 </Link>
-                <div className="text-xs text-slate-600 mt-2">Подновяването го прави домоуправителят (или admin).</div>
+                <div className="text-xs text-slate-600 mt-2">Подновяването го прави домоуправителят (или Админ).</div>
               </div>
             )}
 
@@ -327,13 +352,13 @@ export default function Room() {
                   <div className="border border-slate-200 rounded-3xl p-4 bg-white shadow-sm">
                     <h2 className="font-semibold mb-2 text-slate-900">Домоуправител</h2>
                     <p className="text-sm text-slate-600 mb-3 leading-relaxed">
-                      Подай заявка към admin: въведи град/блок/вход и апартамент. След одобрение ставаш домоуправител и
+                      Подай заявка към Админ: въведи град/блок/вход и апартамент. След одобрение ставаш домоуправител и
                       стаята се създава автоматично.
                     </p>
 
                     {isResident && managerRequestStatus === "pending" ? (
                       <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                        Имаш изпратена заявка. Изчакай admin.
+                        Имаш изпратена заявка. Изчакай Админ.
                       </div>
                     ) : isResident && managerRequestStatus === "rejected" ? (
                       <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
@@ -366,15 +391,22 @@ export default function Room() {
                           onChange={(e) => setReqApartment(e.target.value)}
                         />
 
-                        <button className="w-full rounded-2xl bg-slate-900 text-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-800 transition shadow-sm">
+                        <button
+                          disabled={requiresRoomEmailVerify}
+                          className="w-full rounded-2xl bg-slate-900 text-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-800 disabled:opacity-60 transition shadow-sm"
+                        >
                           Изпрати заявка
                         </button>
                       </form>
                     )}
 
+                    {requiresRoomEmailVerify && (
+                      <p className="text-xs text-amber-700 mt-2">Изисква се потвърден имейл.</p>
+                    )}
+
                     {!isResident && (
                       <p className="text-xs text-slate-500 mt-2">
-                        Тази секция е само за resident потребители (които искат да станат домоуправител).
+                        Тази секция е само за Живущи потребители (които искат да станат домоуправител).
                       </p>
                     )}
                   </div>
@@ -398,10 +430,17 @@ export default function Room() {
                         value={apartmentInput}
                         onChange={(e) => setApartmentInput(e.target.value)}
                       />
-                      <button className="w-full rounded-2xl bg-slate-900 text-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-800 transition shadow-sm">
+                      <button
+                        disabled={requiresRoomEmailVerify}
+                        className="w-full rounded-2xl bg-slate-900 text-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-800 disabled:opacity-60 transition shadow-sm"
+                      >
                         Влез
                       </button>
                     </form>
+
+                    {requiresRoomEmailVerify && (
+                      <p className="text-xs text-amber-700 mt-2">Изисква се потвърден имейл.</p>
+                    )}
                   </div>
                 </div>
               )}
@@ -449,7 +488,7 @@ export default function Room() {
                       </div>
                       <div className="text-xs text-slate-500 mt-2">
                         {room.apartmentsCount === null ? "Още не е зададено." : `Зададено: ${room.apartmentsCount}`}
-                        {room.apartmentsCount !== null && !isAdmin && " • (само admin може да го променя)"}
+                        {room.apartmentsCount !== null && !isAdmin && " • (само Админ може да го променя)"}
                       </div>
                     </div>
 
@@ -469,7 +508,7 @@ export default function Room() {
                         className="mt-2 w-full rounded-2xl bg-slate-900 text-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-800 disabled:opacity-60 transition shadow-sm"
                         disabled={!isAdmin && room.apartmentsCount !== null}
                       >
-                        {room.apartmentsCount === null ? "Запази" : isAdmin ? "Промени (admin)" : "Заключено"}
+                        {room.apartmentsCount === null ? "Запази" : isAdmin ? "Промени (Админ)" : "Заключено"}
                       </button>
                     </div>
                   </div>

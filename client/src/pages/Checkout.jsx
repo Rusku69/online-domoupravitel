@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import api from "../lib/api";
-import SiteFooter from "../components/SiteFooter";
+import { navigateWithTransition } from "../lib/viewTransition";
 
 export default function Checkout() {
   const { id } = useParams();
@@ -80,7 +80,7 @@ export default function Checkout() {
 
                 <div className="mt-5 flex flex-col sm:flex-row gap-2 sm:justify-end">
                   <button
-                    onClick={() => navigate("/payments")}
+                    onClick={() => navigateWithTransition(navigate, "/payments")}
                     className="rounded-2xl px-5 py-3 text-sm font-semibold border border-slate-300 text-slate-900 hover:bg-slate-100 transition"
                   >
                     Назад
@@ -150,7 +150,7 @@ export default function Checkout() {
                 <div className="text-sm font-semibold text-slate-900">Полезни връзки</div>
                 <div className="mt-3 flex flex-col gap-2 text-sm">
                   <button
-                    onClick={() => navigate("/payments")}
+                    onClick={() => navigateWithTransition(navigate, "/payments")}
                     className="rounded-2xl px-4 py-3 text-sm font-semibold border border-slate-300 text-slate-900 hover:bg-slate-100 transition"
                   >
                     Назад към плащания

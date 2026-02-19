@@ -2,6 +2,7 @@ import express from "express";
 import Room from "../models/Room.js";
 import User from "../models/User.js";
 import requireAuth from "../middleware/requireAuth.js";
+import shouldRequireRoomEmailVerify from "../middleware/shouldRequireRoomEmailVerify.js";
 
 const router = express.Router();
 
@@ -61,6 +62,13 @@ router.post("/manager-requests/:id/approve", requireAuth, async (req, res) => {
 
     if (u.managerRequestStatus !== "pending") {
       return res.status(400).json({ message: "Няма pending заявка за този потребител." });
+    }
+
+    if (shouldRequireRoomEmailVerify(u) && !u.emailVerified) {
+      return res.status(400).json({
+        message: "Потребителят трябва първо да потвърди имейла си, преди да стане домоуправител.",
+        code: "EMAIL_NOT_VERIFIED_REQUIRED",
+      });
     }
 
     const city = String(u.managerRequestCity || "").trim();
@@ -248,6 +256,117 @@ router.post("/rooms/:roomId/transfer-manager", requireAuth, async (req, res) => 
     });
   } catch (e) {
     res.status(500).json({ message: "Transfer manager error", error: e.message });
+  }
+});
+
+/**
+ * ✅ GET /api/admin/rooms/:roomId/members
+ * Резервен endpoint (backup), за да е достъпен дори ако adminRooms route не е активен в даден deploy.
+ */
+router.get("/rooms/:roomId/members", requireAuth, async (req, res) => {
+  try {
+    if (!requireAdmin(req, res)) return;
+
+    const { roomId } = req.params;
+    const room = await Room.findById(roomId).lean();
+    if (!room) return res.status(404).json({ message: "Room not found" });
+
+    const ownerId = String(room.createdBy || "");
+    const usersInRoom = await User.find({ roomId: room._id })
+      .select("name email phone apartment role memberStatus")
+      .lean();
+
+    const usersById = new Map(usersInRoom.map((u) => [String(u._id), u]));
+    const members = [];
+
+    for (const m of room.members || []) {
+      const uid = m?.user ? String(m.user) : "";
+      const u = uid ? usersById.get(uid) : null;
+
+      members.push({
+        _id: u?._id || (uid || null),
+        name: m?.nameSnapshot || u?.name || "—",
+        email: u?.email || "—",
+        phone: m?.phoneSnapshot || u?.phone || "",
+        apartment: m?.apartment || u?.apartment || "",
+        role: u?.role || "resident",
+        memberStatus: m?.status || u?.memberStatus || "pending",
+        isRoomManager: !!(uid && ownerId && uid === ownerId),
+      });
+
+      if (uid) usersById.delete(uid);
+    }
+
+    for (const [uid, u] of usersById.entries()) {
+      members.push({
+        _id: u._id,
+        name: u.name || "—",
+        email: u.email || "—",
+        phone: u.phone || "",
+        apartment: u.apartment || "",
+        role: u.role || "resident",
+        memberStatus: u.memberStatus || "pending",
+        isRoomManager: !!(ownerId && uid === ownerId),
+      });
+    }
+
+    if (ownerId && !members.some((x) => String(x._id || "") === ownerId)) {
+      const owner = await User.findById(ownerId).select("name email phone apartment role memberStatus").lean();
+      if (owner) {
+        members.unshift({
+          _id: owner._id,
+          name: owner.name || "—",
+          email: owner.email || "—",
+          phone: owner.phone || "",
+          apartment: owner.apartment || "",
+          role: owner.role || "manager",
+          memberStatus: owner.memberStatus || "approved",
+          isRoomManager: true,
+        });
+      } else {
+        members.unshift({
+          _id: ownerId,
+          name: "Домоуправител (липсва профил)",
+          email: "—",
+          phone: "",
+          apartment: "",
+          role: "manager",
+          memberStatus: "approved",
+          isRoomManager: true,
+        });
+      }
+    }
+
+    const sorted = members.sort((a, b) => {
+      if (a.isRoomManager && !b.isRoomManager) return -1;
+      if (!a.isRoomManager && b.isRoomManager) return 1;
+
+      const aApt = String(a.apartment || "");
+      const bApt = String(b.apartment || "");
+      return aApt.localeCompare(bApt, "bg", { numeric: true, sensitivity: "base" });
+    });
+
+    const summary = {
+      total: sorted.length,
+      managerCount: sorted.filter((x) => x.isRoomManager).length,
+      residentCount: sorted.filter((x) => !x.isRoomManager).length,
+      approvedCount: sorted.filter((x) => x.memberStatus === "approved").length,
+      pendingCount: sorted.filter((x) => x.memberStatus === "pending").length,
+    };
+
+    res.json({
+      room: {
+        _id: room._id,
+        city: room.city,
+        building: room.building,
+        entrance: room.entrance,
+        code: room.code,
+      },
+      summary,
+      members: sorted,
+    });
+  } catch (e) {
+    res.status(500).json({ message: "Room members load error", error: e.message });
   }
 });
 

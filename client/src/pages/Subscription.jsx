@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import api from "../lib/api";
 import { useAuth } from "../store/auth";
 import { PageHeader, HelpCard, ErrorBox, SuccessBox } from "../components/PageBits";
 import { useNavigate } from "react-router-dom";
-import SiteFooter from "../components/SiteFooter";
+import { navigateWithTransition } from "../lib/viewTransition";
 
 export default function Subscription() {
   const { user, fetchUser } = useAuth();
@@ -14,21 +14,66 @@ export default function Subscription() {
 
   const [months, setMonths] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [loadingRoom, setLoadingRoom] = useState(false);
+  const [apartmentsCount, setApartmentsCount] = useState(null);
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
+
+  const pricePerApartmentEur = 1;
+  const canRenew = Number.isInteger(apartmentsCount) && apartmentsCount > 0;
+  const totalAmountEur = useMemo(() => {
+    if (!canRenew) return null;
+    return apartmentsCount * pricePerApartmentEur * months;
+  }, [canRenew, apartmentsCount, months]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadRoom = async () => {
+      if (!user?.roomId) {
+        setApartmentsCount(null);
+        return;
+      }
+
+      try {
+        setLoadingRoom(true);
+        const res = await api.get(`/api/rooms/${user.roomId}`);
+        const n = Number(res.data?.apartmentsCount);
+        if (!cancelled) {
+          setApartmentsCount(Number.isInteger(n) && n > 0 ? n : null);
+        }
+      } catch {
+        if (!cancelled) setApartmentsCount(null);
+      } finally {
+        if (!cancelled) setLoadingRoom(false);
+      }
+    };
+
+    loadRoom();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.roomId]);
 
   const renew = async () => {
     try {
       setErr("");
       setMsg("");
+
+      if (!canRenew) {
+        setErr("Липсва валиден брой апартаменти за тази стая.");
+        return;
+      }
+
       setLoading(true);
 
-      // Stripe-only (без method)
-      await api.post("/api/subscription/renew", { months });
+      // simple renew flow
+      const res = await api.post("/api/subscription/renew", { months });
+      const amount = Number(res?.data?.pricing?.totalAmountEur);
 
-      setMsg("Абонаментът е подновен.");
+      setMsg(Number.isFinite(amount) ? `Абонаментът е подновен (${amount.toFixed(2)} €).` : "Абонаментът е подновен.");
       await fetchUser();
-      setTimeout(() => navigate("/room"), 400);
+      setTimeout(() => navigateWithTransition(navigate, "/room"), 400);
     } catch (e) {
       setErr(e?.response?.data?.message || "Грешка при подновяване");
     } finally {
@@ -71,7 +116,7 @@ export default function Subscription() {
               <>
                 Тук домоуправителят подновява достъпа на входа.
                 <br />
-                Потокът е Stripe-first: реалното плащане се прави със Stripe, а системата обновява срока в базата.
+                Сумата е: <b>1 € x брой апартаменти x месеци</b>.
               </>
             }
           />
@@ -106,9 +151,27 @@ export default function Subscription() {
                   </div>
                 </div>
 
+                <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                  <div>
+                    Апартаменти: <b>{loadingRoom ? "..." : canRenew ? apartmentsCount : "не е зададено"}</b>
+                  </div>
+                  <div className="mt-1">
+                    Цена: <b>{pricePerApartmentEur.toFixed(2)} €</b> на апартамент / месец
+                  </div>
+                  <div className="mt-1">
+                    Общо: <b>{totalAmountEur === null ? "—" : `${totalAmountEur.toFixed(2)} €`}</b>
+                  </div>
+                </div>
+
+                {!canRenew && !loadingRoom && (
+                  <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+                    Не може да се поднови, докато в стаята няма зададен валиден брой апартаменти.
+                  </div>
+                )}
+
                 <button
                   onClick={renew}
-                  disabled={loading}
+                  disabled={loading || loadingRoom || !canRenew}
                   className="mt-5 w-full rounded-2xl px-4 py-3.5 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-60 transition shadow-sm"
                 >
                   {loading ? "Обработка..." : "Потвърди подновяване"}
@@ -126,7 +189,7 @@ export default function Subscription() {
               </HelpCard>
 
               <HelpCard title="Плащания">
-                Реалните плащания се обработват чрез Stripe. След успешна обработка системата обновява статуса и срока в базата.
+                Този екран използва опростен поток. Крайната сума се смята автоматично по броя апартаменти и периода.
               </HelpCard>
 
               <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">

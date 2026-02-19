@@ -52,10 +52,20 @@ export default function AdminRooms() {
   const [apartmentsCount, setApartmentsCount] = useState("");
   const [trialEndsAt, setTrialEndsAt] = useState("");
   const [subscriptionExpires, setSubscriptionExpires] = useState("");
+  const [initialSettings, setInitialSettings] = useState({
+    apartmentsCount: "",
+    trialEndsAt: "",
+    subscriptionExpires: "",
+  });
 
   // transfer manager UI
   const [newManagerEmail, setNewManagerEmail] = useState("");
   const [transferBusy, setTransferBusy] = useState(false);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [membersLoaded, setMembersLoaded] = useState(false);
+  const [roomMembers, setRoomMembers] = useState([]);
+  const [membersSummary, setMembersSummary] = useState(null);
+  const [adminMembersEndpointAvailable, setAdminMembersEndpointAvailable] = useState(true);
 
   const load = async () => {
     try {
@@ -80,18 +90,150 @@ export default function AdminRooms() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const openEdit = (r) => {
+  const sortMembers = (members) => {
+    return [...members].sort((a, b) => {
+      if (a.isRoomManager && !b.isRoomManager) return -1;
+      if (!a.isRoomManager && b.isRoomManager) return 1;
+      return String(a.apartment || "").localeCompare(String(b.apartment || ""), "bg", {
+        numeric: true,
+        sensitivity: "base",
+      });
+    });
+  };
+
+  const buildMembersSummary = (members) => {
+    return {
+      total: members.length,
+      managerCount: members.filter((x) => x.isRoomManager).length,
+      residentCount: members.filter((x) => !x.isRoomManager).length,
+      approvedCount: members.filter((x) => x.memberStatus === "approved").length,
+      pendingCount: members.filter((x) => x.memberStatus === "pending").length,
+    };
+  };
+
+  const applyMembersPayload = (payload) => {
+    const normalized = (Array.isArray(payload?.members) ? payload.members : []).map((m) => ({
+      _id: m?._id || m?.user?._id || m?.user || null,
+      name: m?.name || m?.nameSnapshot || m?.user?.name || "—",
+      email: m?.email || m?.user?.email || "—",
+      phone: m?.phone || m?.phoneSnapshot || m?.user?.phone || "",
+      apartment: m?.apartment || m?.user?.apartment || "",
+      role: m?.role || m?.user?.role || (m?.isRoomManager ? "manager" : "resident"),
+      memberStatus: m?.memberStatus || m?.status || m?.user?.memberStatus || "pending",
+      isRoomManager: !!m?.isRoomManager,
+    }));
+
+    const sorted = sortMembers(normalized);
+    const summary =
+      payload?.summary && typeof payload.summary === "object"
+        ? {
+            total: Number(payload.summary.total ?? sorted.length),
+            managerCount: Number(payload.summary.managerCount ?? sorted.filter((x) => x.isRoomManager).length),
+            residentCount: Number(payload.summary.residentCount ?? sorted.filter((x) => !x.isRoomManager).length),
+            approvedCount: Number(payload.summary.approvedCount ?? sorted.filter((x) => x.memberStatus === "approved").length),
+            pendingCount: Number(payload.summary.pendingCount ?? sorted.filter((x) => x.memberStatus === "pending").length),
+          }
+        : buildMembersSummary(sorted);
+
+    setRoomMembers(sorted);
+    setMembersSummary(summary);
+    setMembersLoaded(true);
+  };
+
+  const loadRoomMembers = async (roomId) => {
+    try {
+      setMembersLoading(true);
+      setMembersLoaded(false);
+
+      if (adminMembersEndpointAvailable) {
+        try {
+          const res = await api.get(`/api/admin/rooms/${roomId}/members`);
+          if (Array.isArray(res?.data?.members)) {
+            applyMembersPayload(res.data);
+            return;
+          }
+        } catch (e) {
+          if (e?.response?.status === 404) {
+            setAdminMembersEndpointAvailable(false);
+          } else {
+            throw e;
+          }
+        }
+      }
+
+      // Fallback за по-стар backend без admin members endpoint.
+      const res = await api.get(`/api/rooms/${roomId}`);
+      const roomData = res.data || {};
+      const createdBy = roomData?.createdBy || {};
+      const managerId = String(createdBy?._id || roomData?.createdBy || "");
+
+      const membersRaw = Array.isArray(roomData?.members) ? roomData.members : [];
+      const members = membersRaw.map((m) => {
+        const memberUser = m?.user && typeof m.user === "object" ? m.user : null;
+        const memberUserId = memberUser?._id ? String(memberUser._id) : String(m?.user || "");
+        const isRoomManager = !!(managerId && memberUserId === managerId);
+
+        return {
+          _id: memberUserId || null,
+          name: m?.nameSnapshot || memberUser?.name || (isRoomManager ? createdBy?.name || "—" : "—"),
+          email: memberUser?.email || (isRoomManager ? createdBy?.email || "—" : "—"),
+          phone: m?.phoneSnapshot || memberUser?.phone || (isRoomManager ? createdBy?.phone || "" : ""),
+          apartment: m?.apartment || memberUser?.apartment || "",
+          role: memberUser?.role || (isRoomManager ? "manager" : "resident"),
+          memberStatus: m?.status || memberUser?.memberStatus || "pending",
+          isRoomManager,
+        };
+      });
+
+      if (managerId && !members.some((x) => String(x._id || "") === managerId)) {
+        members.unshift({
+          _id: managerId,
+          name: createdBy?.name || "—",
+          email: createdBy?.email || "—",
+          phone: createdBy?.phone || "",
+          apartment: createdBy?.apartment || "",
+          role: "manager",
+          memberStatus: "approved",
+          isRoomManager: true,
+        });
+      }
+
+      const sorted = sortMembers(members);
+      setRoomMembers(sorted);
+      setMembersSummary(buildMembersSummary(sorted));
+      setMembersLoaded(true);
+    } catch (e) {
+      setRoomMembers([]);
+      setMembersSummary(null);
+      setErr(e?.response?.data?.message || "Грешка при зареждане на членове");
+      setMembersLoaded(true);
+    } finally {
+      setMembersLoading(false);
+    }
+  };
+
+  const openEdit = async (r) => {
     setMsg("");
     setErr("");
     setEditId(r._id);
-    setApartmentsCount(r.apartmentsCount ?? "");
-    setTrialEndsAt(r.subscription?.trialEndsAt ? new Date(r.subscription.trialEndsAt).toISOString().slice(0, 10) : "");
-    setSubscriptionExpires(
-      r.subscription?.subscriptionExpires ? new Date(r.subscription.subscriptionExpires).toISOString().slice(0, 10) : ""
-    );
+    const nextInitialSettings = {
+      apartmentsCount: r.apartmentsCount === null || r.apartmentsCount === undefined ? "" : String(r.apartmentsCount),
+      trialEndsAt: r.subscription?.trialEndsAt ? new Date(r.subscription.trialEndsAt).toISOString().slice(0, 10) : "",
+      subscriptionExpires: r.subscription?.subscriptionExpires
+        ? new Date(r.subscription.subscriptionExpires).toISOString().slice(0, 10)
+        : "",
+    };
+    setApartmentsCount(nextInitialSettings.apartmentsCount);
+    setTrialEndsAt(nextInitialSettings.trialEndsAt);
+    setSubscriptionExpires(nextInitialSettings.subscriptionExpires);
+    setInitialSettings(nextInitialSettings);
 
     setNewManagerEmail("");
     setTransferBusy(false);
+    setMembersLoaded(false);
+    setRoomMembers([]);
+    setMembersSummary(null);
+    await loadRoomMembers(r._id);
   };
 
   const closeEdit = () => {
@@ -99,8 +241,13 @@ export default function AdminRooms() {
     setApartmentsCount("");
     setTrialEndsAt("");
     setSubscriptionExpires("");
+    setInitialSettings({ apartmentsCount: "", trialEndsAt: "", subscriptionExpires: "" });
     setNewManagerEmail("");
     setTransferBusy(false);
+    setMembersLoading(false);
+    setMembersLoaded(false);
+    setRoomMembers([]);
+    setMembersSummary(null);
   };
 
   const save = async () => {
@@ -108,7 +255,7 @@ export default function AdminRooms() {
       setErr("");
       setMsg("");
 
-      if (!editId) return;
+      if (!editId || !hasSettingsChanges) return;
 
       const body = {
         apartmentsCount: apartmentsCount === "" ? undefined : Number(apartmentsCount),
@@ -152,6 +299,22 @@ export default function AdminRooms() {
 
   const view = useMemo(() => rooms, [rooms]);
 
+  const hasSettingsChanges = useMemo(() => {
+    if (!editId) return false;
+
+    const normalizeApt = (v) => {
+      if (v === "" || v === null || v === undefined) return "";
+      const n = Number(v);
+      return Number.isFinite(n) ? String(n) : String(v).trim();
+    };
+
+    return (
+      normalizeApt(apartmentsCount) !== normalizeApt(initialSettings.apartmentsCount) ||
+      String(trialEndsAt || "") !== String(initialSettings.trialEndsAt || "") ||
+      String(subscriptionExpires || "") !== String(initialSettings.subscriptionExpires || "")
+    );
+  }, [editId, apartmentsCount, trialEndsAt, subscriptionExpires, initialSettings]);
+
   if (!user) return null;
 
   if (!isAdmin) {
@@ -180,7 +343,7 @@ export default function AdminRooms() {
       <div className="flex-1 p-6">
         <div className="max-w-6xl mx-auto space-y-4">
           <PageHeader
-            title="Admin — Входове (Rooms)"
+            title="Админ — Входове (Rooms)"
             subtitle={
               <>
                 Тук управляваш всички входове в системата: брой апартаменти, trial и платен период.
@@ -264,6 +427,13 @@ export default function AdminRooms() {
                   <div className="mt-4 space-y-3">
                     {view.map((r) => {
                       const active = !!r.subscription?.active;
+                      const visibleMembers = roomMembers;
+                      const totalMembersCount = membersSummary?.total ?? visibleMembers.length;
+                      const managerMembersCount = membersSummary?.managerCount ?? 0;
+                      const residentMembersCount = membersSummary?.residentCount ?? 0;
+                      const approvedMembersCount = membersSummary?.approvedCount ?? 0;
+                      const pendingMembersCount = membersSummary?.pendingCount ?? 0;
+
                       return (
                         <div key={r._id} className="rounded-3xl border border-slate-200 p-5 bg-white shadow-sm">
                           <div className="flex items-start justify-between gap-3">
@@ -295,10 +465,10 @@ export default function AdminRooms() {
                             </div>
 
                             <button
-                              onClick={() => openEdit(r)}
+                              onClick={() => (editId === r._id ? closeEdit() : openEdit(r))}
                               className="shrink-0 rounded-2xl px-4 py-2 text-sm font-semibold border border-slate-300 text-slate-900 hover:bg-slate-100 transition"
                             >
-                              Настройки
+                              {editId === r._id ? "Затвори" : "Настройки"}
                             </button>
                           </div>
 
@@ -352,7 +522,7 @@ export default function AdminRooms() {
                                 <div className="font-semibold text-slate-900">Смяна на домоуправител</div>
                                 <div className="text-xs text-slate-600 mt-1">
                                   Въведи имейла на потребителя, който ще стане нов домоуправител за този вход.
-                                  Старият домоуправител става resident.
+                                  Старият домоуправител става Живущ.
                                 </div>
 
                                 <div className="mt-3 flex flex-col md:flex-row gap-2">
@@ -372,20 +542,73 @@ export default function AdminRooms() {
                                 </div>
                               </div>
 
-                              <div className="mt-4 flex flex-wrap gap-2">
-                                <button
-                                  onClick={save}
-                                  className="rounded-2xl px-4 py-2.5 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 transition shadow-sm"
-                                >
-                                  Запази
-                                </button>
-                                <button
-                                  onClick={closeEdit}
-                                  className="rounded-2xl px-4 py-2.5 text-sm font-semibold border border-slate-300 text-slate-900 hover:bg-white transition"
-                                >
-                                  Отказ
-                                </button>
+                              <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-4">
+                                <div className="font-semibold text-slate-900">Хора в тази стая</div>
+                                <div className="text-xs text-slate-600 mt-1">
+                                  Виждаш домоуправителя и всички живущи с роля и статус.
+                                </div>
+
+                                {membersLoading ? (
+                                  <div className="mt-3 text-sm text-slate-500">Зареждане на членове...</div>
+                                ) : !membersLoaded ? (
+                                  <div className="mt-3 text-sm text-slate-500">Зареждане...</div>
+                                ) : visibleMembers.length === 0 ? (
+                                  <div className="mt-3 text-sm text-slate-500">Няма записани хора в тази стая.</div>
+                                ) : (
+                                  <>
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                      <Pill tone="gray">Общо: {totalMembersCount}</Pill>
+                                      <Pill tone="sky">Домоуправител: {managerMembersCount}</Pill>
+                                      <Pill tone="gray">Живущи: {residentMembersCount}</Pill>
+                                      <Pill tone="green">Approved: {approvedMembersCount}</Pill>
+                                      <Pill tone="yellow">Pending: {pendingMembersCount}</Pill>
+                                    </div>
+
+                                    <div className="mt-3 space-y-2">
+                                      {visibleMembers.map((m) => (
+                                        <div
+                                          key={`${r._id}-${m._id || m.email}-${m.apartment || "na"}`}
+                                          className="rounded-2xl border border-slate-200 px-3 py-2 bg-slate-50"
+                                        >
+                                          <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <div className="text-sm text-slate-800">
+                                              <b className="text-slate-900">{m.name || "—"}</b>
+                                              {m.email ? ` • ${m.email}` : ""}
+                                              {m.apartment ? ` • ап. ${m.apartment}` : ""}
+                                            </div>
+                                            <div className="flex flex-wrap gap-1.5">
+                                              <Pill tone={m.isRoomManager ? "sky" : "gray"}>
+                                                {m.isRoomManager ? "домоуправител" : "живущ"}
+                                              </Pill>
+                                              <Pill tone={m.memberStatus === "approved" ? "green" : "yellow"}>
+                                                {m.memberStatus || "pending"}
+                                              </Pill>
+                                            </div>
+                                          </div>
+                                          {m.phone && <div className="mt-1 text-xs text-slate-500">{m.phone}</div>}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </>
+                                )}
                               </div>
+
+                              {hasSettingsChanges && (
+                                <div className="mt-4 flex flex-wrap gap-2">
+                                  <button
+                                    onClick={save}
+                                    className="rounded-2xl px-4 py-2.5 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 transition shadow-sm"
+                                  >
+                                    Запази
+                                  </button>
+                                  <button
+                                    onClick={closeEdit}
+                                    className="rounded-2xl px-4 py-2.5 text-sm font-semibold border border-slate-300 text-slate-900 hover:bg-white transition"
+                                  >
+                                    Отказ
+                                  </button>
+                                </div>
+                              )}
 
                               <div className="text-xs text-slate-600 mt-3">
                                 Ако искаш да активираш входа: сложи subscriptionExpires в бъдещето, или удължи trialEndsAt.
@@ -412,7 +635,7 @@ export default function AdminRooms() {
 
               <HelpCard title="Смяна на домоуправител">
                 <div className="text-sm text-slate-700 mt-2">
-                  Прехвърля ownership-а на стаята към друг потребител (по имейл). Старият домоуправител става resident и
+                  Прехвърля ownership-а на стаята към друг потребител (по имейл). Старият домоуправител става Живущ и
                   остава член на стаята.
                 </div>
               </HelpCard>
