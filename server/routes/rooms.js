@@ -113,7 +113,25 @@ router.post("/join", requireAuth, requireRoomEmailVerified, async (req, res) => 
     if (!room) return res.status(404).json({ message: "Room not found" });
 
     const apt = String(apartment || "").trim();
-    if (!apt) return res.status(400).json({ message: "Въведи апартамент" });
+    if (u.role !== "admin" && !apt) {
+      return res.status(400).json({ message: "Въведи апартамент" });
+    }
+
+    if (u.role === "admin") {
+      u.roomId = room._id;
+      u.memberStatus = "approved";
+      u.city = room.city;
+      u.building = room.building;
+      u.entrance = room.entrance;
+      u.apartment = apt || "";
+      await u.save();
+
+      return res.json({
+        message: "Админът влезе в стаята.",
+        roomId: room._id,
+        autoApproved: true,
+      });
+    }
 
     const already = room.members.find((m) => String(m.user) === String(u._id));
 
@@ -139,6 +157,32 @@ router.post("/join", requireAuth, requireRoomEmailVerified, async (req, res) => 
     res.json({ message: "Заявката е изпратена.", roomId: room._id });
   } catch (e) {
     res.status(500).json({ message: "Join error", error: e.message });
+  }
+});
+
+router.post("/leave", requireAuth, async (req, res) => {
+  try {
+    const u = req.user;
+
+    if (u.role !== "admin") {
+      return res.status(403).json({ message: "Само Админ може да излиза от стая по този начин." });
+    }
+
+    if (!u.roomId) {
+      return res.json({ message: "Админът не е в стая.", roomId: null });
+    }
+
+    u.roomId = null;
+    u.memberStatus = "pending";
+    u.city = "";
+    u.building = "";
+    u.entrance = "";
+    u.apartment = "";
+    await u.save();
+
+    res.json({ message: "Излезе от стаята.", roomId: null });
+  } catch (e) {
+    res.status(500).json({ message: "Leave room error", error: e.message });
   }
 });
 
@@ -442,6 +486,49 @@ router.get("/:roomId/finance", requireAuth, requireRoomActive, async (req, res) 
     res.json(room.finance || {});
   } catch (e) {
     res.status(500).json({ message: "Finance load error", error: e.message });
+  }
+});
+
+// ✅ ADMIN override payout details (IBAN/holder) without exposing full finance tools
+router.patch("/:roomId/finance/admin-payout", requireAuth, async (req, res) => {
+  try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ message: "Само Админ има достъп." });
+    }
+
+    if (!req.user.roomId || String(req.user.roomId) !== String(req.params.roomId)) {
+      return res.status(403).json({ message: "Първо влез в тази стая като Админ." });
+    }
+
+    const room = await Room.findById(req.params.roomId);
+    if (!room) return res.status(404).json({ message: "Room not found" });
+
+    const cleanIban = String(req.body.iban || "").trim();
+    const cleanHolder = String(req.body.holderName || "").trim();
+
+    if (!cleanHolder) {
+      return res.status(400).json({ message: "Липсва име на получателя" });
+    }
+    if (!cleanIban || cleanIban.length < 10) {
+      return res.status(400).json({ message: "Невалиден IBAN" });
+    }
+
+    room.finance = {
+      iban: cleanIban,
+      holderName: cleanHolder,
+      balance: Number(room.finance?.balance || 0),
+      locked: Boolean(room.finance?.locked),
+      expenses: Array.isArray(room.finance?.expenses) ? room.finance.expenses : [],
+    };
+
+    await room.save();
+
+    res.json({
+      message: "IBAN/получател са обновени от Админ.",
+      finance: room.finance,
+    });
+  } catch (e) {
+    res.status(500).json({ message: "Admin payout override error", error: e.message });
   }
 });
 

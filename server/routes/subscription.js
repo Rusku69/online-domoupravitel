@@ -1,10 +1,19 @@
 import express from "express";
 import jwt from "jsonwebtoken";
+import Stripe from "stripe";
 import User from "../models/User.js";
 import Room from "../models/Room.js";
 
 const router = express.Router();
 const PRICE_PER_APARTMENT_EUR = 1;
+const APP_URL = process.env.APP_URL || "http://localhost:5173";
+const STRIPE_CURRENCY = "eur";
+
+function getStripe() {
+  const key = process.env.STRIPE_SECRET_KEY || "";
+  if (!key) return null;
+  return new Stripe(key, { apiVersion: "2024-06-20" });
+}
 
 const requireAuth = async (req, res, next) => {
   try {
@@ -23,7 +32,7 @@ const requireAuth = async (req, res, next) => {
   }
 };
 
-// ✅ renew room subscription (manager/admin only)
+// ✅ renew room subscription (manager/admin only) -> Stripe Checkout
 router.post("/renew", requireAuth, async (req, res) => {
   try {
     if (req.user.role !== "manager" && req.user.role !== "admin") {
@@ -31,7 +40,6 @@ router.post("/renew", requireAuth, async (req, res) => {
     }
     if (!req.user.roomId) return res.status(400).json({ message: "Нямате стая" });
 
-    // simple renew flow (без отделен payment method екран)
     const { months = 1 } = req.body;
 
     const m = Number(months);
@@ -50,28 +58,48 @@ router.post("/renew", requireAuth, async (req, res) => {
     }
 
     const totalAmountEur = apartmentsCount * PRICE_PER_APARTMENT_EUR * m;
-
-    // удължаваме от най-късната активна дата:
-    // now, текущ платен период или активен trial
-    const now = new Date();
-    const baseCandidates = [now];
-    if (room.subscriptionExpires && new Date(room.subscriptionExpires) > now) {
-      baseCandidates.push(new Date(room.subscriptionExpires));
+    const stripe = getStripe();
+    if (!stripe) {
+      return res.status(500).json({ message: "Stripe не е конфигуриран (липсва STRIPE_SECRET_KEY)." });
     }
-    if (room.trialEndsAt && new Date(room.trialEndsAt) > now) {
-      baseCandidates.push(new Date(room.trialEndsAt));
-    }
-    const base = new Date(Math.max(...baseCandidates.map((d) => d.getTime())));
 
-    const next = new Date(base);
-    next.setMonth(next.getMonth() + m);
+    const unitAmountCents = Math.round(totalAmountEur * 100);
 
-    room.subscriptionExpires = next;
-    await room.save();
+    const roomLabel = [room.city, `Блок ${room.building}`, `Вход ${room.entrance}`].filter(Boolean).join(" • ");
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      payment_method_types: ["card"],
+      line_items: [
+        {
+          quantity: 1,
+          price_data: {
+            currency: STRIPE_CURRENCY,
+            unit_amount: unitAmountCents,
+            product_data: {
+              name: `Подновяване на абонамент (${m} мес.)`,
+              description: roomLabel || "Абонамент за вход",
+            },
+          },
+        },
+      ],
+      success_url: `${APP_URL}/subscription?paid=1`,
+      cancel_url: `${APP_URL}/subscription?canceled=1`,
+      metadata: {
+        kind: "room_subscription_renewal",
+        roomId: String(room._id),
+        userId: String(req.user._id),
+        months: String(m),
+        apartmentsCount: String(apartmentsCount),
+        pricePerApartmentEur: String(PRICE_PER_APARTMENT_EUR),
+        totalAmountEur: totalAmountEur.toFixed(2),
+      },
+      customer_email: req.user.email || undefined,
+    });
 
     res.json({
-      message: `✅ Подновено за ${m} месец(а) • сума ${totalAmountEur.toFixed(2)} €`,
-      subscriptionExpires: room.subscriptionExpires,
+      message: "Stripe Checkout е създаден.",
+      url: session.url,
       pricing: {
         pricePerApartmentEur: PRICE_PER_APARTMENT_EUR,
         apartmentsCount,

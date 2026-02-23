@@ -47,6 +47,9 @@ export default function Room() {
   const [codeInput, setCodeInput] = useState("");
   const [apartmentInput, setApartmentInput] = useState("");
   const [apartmentsCountInput, setApartmentsCountInput] = useState("");
+  const [adminFinanceHolderInput, setAdminFinanceHolderInput] = useState("");
+  const [adminFinanceIbanInput, setAdminFinanceIbanInput] = useState("");
+  const [adminFinanceSaving, setAdminFinanceSaving] = useState(false);
 
   // manager request form
   const [reqCity, setReqCity] = useState("");
@@ -90,7 +93,11 @@ export default function Room() {
         setApartmentsCountInput(String(ac));
       }
 
-      if (isManager || isAdmin) {
+      const finance = roomRes.data?.finance || {};
+      setAdminFinanceHolderInput(String(finance.holderName || ""));
+      setAdminFinanceIbanInput(String(finance.iban || ""));
+
+      if (isManager) {
         try {
           const pendingRes = await api.get(`/api/rooms/${user.roomId}/pending`);
           setPending(Array.isArray(pendingRes.data) ? pendingRes.data : []);
@@ -158,18 +165,44 @@ export default function Room() {
       }
 
       if (!codeInput.trim()) return setErr("Въведи код за стая.");
-      if (!apartmentInput.trim()) return setErr("Въведи апартамент.");
+      if (!isAdmin && !apartmentInput.trim()) return setErr("Въведи апартамент.");
 
-      await api.post("/api/rooms/join", {
+      const res = await api.post("/api/rooms/join", {
         code: codeInput.trim(),
         apartment: apartmentInput.trim(),
       });
 
-      setMsg("Заявката е изпратена. Изчакай одобрение от домоуправителя.");
+      if (res?.data?.autoApproved) {
+        setMsg("Влезе в стаята като Админ.");
+      } else {
+        setMsg("Заявката е изпратена. Изчакай одобрение от домоуправителя.");
+      }
       await fetchUser();
       await loadRoomInfo();
     } catch (e) {
       setErr(e?.response?.data?.message || "Грешка при присъединяване");
+    }
+  };
+
+  const leaveRoomAsAdmin = async () => {
+    try {
+      setErr("");
+      setMsg("");
+
+      await api.post("/api/rooms/leave");
+
+      setRoom(null);
+      setPending([]);
+      setApartmentsCountInput("");
+      setAdminFinanceHolderInput("");
+      setAdminFinanceIbanInput("");
+      setCodeInput("");
+      setApartmentInput("");
+
+      await fetchUser();
+      setMsg("Излезе от стаята. Можеш да влезеш в друга с код.");
+    } catch (e) {
+      setErr(e?.response?.data?.message || "Грешка при излизане от стаята");
     }
   };
 
@@ -230,6 +263,30 @@ export default function Room() {
     }
   };
 
+  const saveAdminPayoutOverride = async () => {
+    try {
+      setErr("");
+      setMsg("");
+      setAdminFinanceSaving(true);
+
+      if (!room?._id) return setErr("Няма стая.");
+      if (!adminFinanceHolderInput.trim()) return setErr("Въведи получател.");
+      if (!adminFinanceIbanInput.trim()) return setErr("Въведи IBAN.");
+
+      await api.patch(`/api/rooms/${room._id}/finance/admin-payout`, {
+        holderName: adminFinanceHolderInput.trim(),
+        iban: adminFinanceIbanInput.trim(),
+      });
+
+      setMsg("IBAN/получател са обновени.");
+      await loadRoomInfo();
+    } catch (e) {
+      setErr(e?.response?.data?.message || "Грешка при обновяване на IBAN/получател");
+    } finally {
+      setAdminFinanceSaving(false);
+    }
+  };
+
   if (!user) return null;
 
   const subActive = !!room?.subscription?.active;
@@ -273,6 +330,14 @@ export default function Room() {
               <div className="text-right">
                 <div className="text-xs text-slate-500">Стая</div>
                 <div className="text-sm font-semibold text-slate-900">{hasRoom ? "Активна" : "Няма"}</div>
+                {isAdmin && hasRoom && (
+                  <button
+                    onClick={leaveRoomAsAdmin}
+                    className="mt-2 rounded-2xl px-3 py-2 text-xs font-semibold border border-rose-300 text-rose-900 hover:bg-rose-50 transition"
+                  >
+                    Излез от стаята
+                  </button>
+                )}
               </div>
             </div>
 
@@ -332,7 +397,7 @@ export default function Room() {
               </div>
             )}
 
-            {(isManager || isAdmin) && hasRoom && !subActive && (
+            {isManager && hasRoom && !subActive && (
               <div className="mt-3" id="subscription">
                 <Link
                   to="/subscription"
@@ -340,7 +405,7 @@ export default function Room() {
                 >
                   Поднови абонамент
                 </Link>
-                <div className="text-xs text-slate-600 mt-2">Подновяването го прави домоуправителят (или Админ).</div>
+                <div className="text-xs text-slate-600 mt-2">Подновяването го прави домоуправителят.</div>
               </div>
             )}
 
@@ -522,7 +587,55 @@ export default function Room() {
                 </div>
               )}
 
-              {(isManager || isAdmin) && (
+              {isAdmin && room && (
+                <div className="border border-slate-200 rounded-3xl p-4 bg-white shadow-sm" id="settings">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-semibold text-slate-900">IBAN / Получател (Админ)</div>
+                      <div className="text-sm text-slate-600 mt-1">
+                        Тук Админ може да коригира данните за получаване на средства, без да отваря всички финансови справки.
+                      </div>
+                      <div className="text-xs text-slate-500 mt-2">
+                        Не променя баланса или историята на разходите. Променя само получател и IBAN.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">Получател</label>
+                      <input
+                        className="w-full border border-slate-200 rounded-2xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
+                        value={adminFinanceHolderInput}
+                        onChange={(e) => setAdminFinanceHolderInput(e.target.value)}
+                        placeholder="Име на получателя"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">IBAN</label>
+                      <input
+                        className="w-full border border-slate-200 rounded-2xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
+                        value={adminFinanceIbanInput}
+                        onChange={(e) => setAdminFinanceIbanInput(e.target.value)}
+                        placeholder="IBAN"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex justify-end">
+                    <button
+                      onClick={saveAdminPayoutOverride}
+                      disabled={adminFinanceSaving}
+                      className="rounded-2xl bg-slate-900 text-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-800 disabled:opacity-60 transition shadow-sm"
+                    >
+                      {adminFinanceSaving ? "Запазване..." : "Запази IBAN/получател"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {isManager && (
                 <div className="border border-slate-200 rounded-3xl p-4 bg-white shadow-sm" id="requests">
                   <h2 className="font-semibold mb-3 text-slate-900">Чакащи заявки</h2>
                   {safePending.length === 0 ? (
@@ -569,7 +682,7 @@ export default function Room() {
                 </div>
               )}
 
-              {isApproved && (
+              {isApproved && !isAdmin && (
                 <div className="border border-emerald-200 rounded-3xl p-4 bg-emerald-50">
                   <div className="font-semibold text-emerald-900">Одобрен</div>
                   <div className="text-sm text-emerald-900/90">

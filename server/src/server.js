@@ -41,6 +41,26 @@ const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET || "";
 
 const stripe = stripeSecret ? new Stripe(stripeSecret, { apiVersion: "2024-06-20" }) : null;
 
+function extendRoomSubscription(room, months) {
+  const m = Number(months);
+  if (!Number.isFinite(m) || m < 1 || m > 24) return null;
+
+  const now = new Date();
+  const baseCandidates = [now];
+  if (room.subscriptionExpires && new Date(room.subscriptionExpires) > now) {
+    baseCandidates.push(new Date(room.subscriptionExpires));
+  }
+  if (room.trialEndsAt && new Date(room.trialEndsAt) > now) {
+    baseCandidates.push(new Date(room.trialEndsAt));
+  }
+
+  const base = new Date(Math.max(...baseCandidates.map((d) => d.getTime())));
+  const next = new Date(base);
+  next.setMonth(next.getMonth() + m);
+  room.subscriptionExpires = next;
+  return next;
+}
+
 app.post(
   "/api/payments/stripe/webhook",
   express.raw({ type: "application/json" }),
@@ -61,6 +81,7 @@ app.post(
 
       if (event.type === "checkout.session.completed") {
         const session = event.data.object;
+        const kind = String(session?.metadata?.kind || "");
 
         const paymentId = session?.metadata?.paymentId;
         const roomId = session?.metadata?.roomId;
@@ -118,6 +139,42 @@ app.post(
                 room.finance.balance =
                   Number(room.finance.balance || 0) + Number(payment.amount || 0);
                 await room.save();
+              }
+            }
+          }
+        }
+
+        if (kind === "room_subscription_renewal") {
+          const renewRoomId = String(session?.metadata?.roomId || "");
+          const renewUserId = String(session?.metadata?.userId || "");
+          const renewMonths = Number(session?.metadata?.months || 0);
+          const renewApartments = Number(session?.metadata?.apartmentsCount || 0);
+          const renewAmountEur = Number(session?.metadata?.totalAmountEur || 0);
+
+          if (renewRoomId && renewUserId && Number.isFinite(renewMonths) && renewMonths > 0) {
+            const room = await Room.findById(renewRoomId);
+            if (room) {
+              room.subscriptionRenewals = Array.isArray(room.subscriptionRenewals) ? room.subscriptionRenewals : [];
+
+              const alreadyProcessed = room.subscriptionRenewals.some(
+                (x) => String(x?.stripeSessionId || "") === String(session.id)
+              );
+
+              if (!alreadyProcessed) {
+                const next = extendRoomSubscription(room, renewMonths);
+
+                if (next) {
+                  room.subscriptionRenewals.push({
+                    stripeSessionId: String(session.id || ""),
+                    byUser: renewUserId || null,
+                    months: renewMonths,
+                    apartmentsCount: Number.isFinite(renewApartments) ? renewApartments : 0,
+                    amountEur: Number.isFinite(renewAmountEur) ? renewAmountEur : 0,
+                    createdAt: new Date(),
+                  });
+
+                  await room.save();
+                }
               }
             }
           }

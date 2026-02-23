@@ -2,12 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import api from "../lib/api";
 import { useAuth } from "../store/auth";
 import { PageHeader, HelpCard, ErrorBox, SuccessBox } from "../components/PageBits";
-import { useNavigate } from "react-router-dom";
-import { navigateWithTransition } from "../lib/viewTransition";
 
 export default function Subscription() {
   const { user, fetchUser } = useAuth();
-  const navigate = useNavigate();
 
   const isManager = user?.role === "manager";
   const isAdmin = user?.role === "admin";
@@ -55,6 +52,29 @@ export default function Subscription() {
     };
   }, [user?.roomId]);
 
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const paid = params.get("paid") === "1";
+      const canceled = params.get("canceled") === "1";
+
+      if (paid) {
+        setErr("");
+        setMsg("Плащането е успешно. Статусът на абонамента се обновява автоматично.");
+        fetchUser();
+      } else if (canceled) {
+        setMsg("");
+        setErr("Плащането беше отказано/прекъснато.");
+      }
+
+      if (paid || canceled) {
+        window.history.replaceState({}, "", window.location.pathname);
+      }
+    } catch {
+      // ignore URL parsing issues
+    }
+  }, [fetchUser]);
+
   const renew = async () => {
     try {
       setErr("");
@@ -67,13 +87,14 @@ export default function Subscription() {
 
       setLoading(true);
 
-      // simple renew flow
       const res = await api.post("/api/subscription/renew", { months });
-      const amount = Number(res?.data?.pricing?.totalAmountEur);
+      const url = res?.data?.url;
+      if (!url) {
+        setErr("Липсва Stripe checkout URL.");
+        return;
+      }
 
-      setMsg(Number.isFinite(amount) ? `Абонаментът е подновен (${amount.toFixed(2)} €).` : "Абонаментът е подновен.");
-      await fetchUser();
-      setTimeout(() => navigateWithTransition(navigate, "/room"), 400);
+      window.location.href = url;
     } catch (e) {
       setErr(e?.response?.data?.message || "Грешка при подновяване");
     } finally {
@@ -129,8 +150,8 @@ export default function Subscription() {
               <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
                 <div className="font-black text-slate-900">Период</div>
                 <div className="text-sm text-slate-600 mt-2 leading-relaxed">
-                  Избери период за подновяване. След потвърждение системата удължава срока на активност за стаята и
-                  отключва модулите, които зависят от активен абонамент.
+                  Избери период за подновяване. След това ще бъдеш пренасочен към Stripe Checkout за плащане с карта.
+                  При успешно плащане системата удължава срока на активност за стаята и отключва модулите.
                 </div>
 
                 <div className="mt-5">
@@ -174,11 +195,11 @@ export default function Subscription() {
                   disabled={loading || loadingRoom || !canRenew}
                   className="mt-5 w-full rounded-2xl px-4 py-3.5 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-60 transition shadow-sm"
                 >
-                  {loading ? "Обработка..." : "Потвърди подновяване"}
+                  {loading ? "Пренасочване..." : "Продължи към Stripe плащане"}
                 </button>
 
                 <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
-                  След обновяване системата синхронизира данните на потребителя и те връща към „Стая“, където се вижда статусът.
+                  След успешно плащане през Stripe статусът на входа се обновява автоматично чрез webhook.
                 </div>
               </div>
             </div>
@@ -189,7 +210,7 @@ export default function Subscription() {
               </HelpCard>
 
               <HelpCard title="Плащания">
-                Този екран използва опростен поток. Крайната сума се смята автоматично по броя апартаменти и периода.
+                Крайната сума се смята автоматично по броя апартаменти и периода, след което плащането минава през Stripe Checkout.
               </HelpCard>
 
               <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">

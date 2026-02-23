@@ -134,6 +134,8 @@ export default function Home() {
   };
 
   const authClass = (base, to) => `${base} home-auth-link ${pendingAuthRoute === to ? "home-auth-link-going" : ""}`;
+  const loggedHomeCtaTo = user?.role === "admin" ? "/admin" : "/dashboard";
+  const loggedHomeCtaLabel = user?.role === "admin" ? "Админ страница" : "Към таблото";
 
   return (
     <div className={`home-page min-h-screen flex flex-col text-slate-900 ${authLeaving ? "home-auth-leaving" : ""}`}>
@@ -151,8 +153,8 @@ export default function Home() {
 
           <div className="flex items-center gap-2">
             {user ? (
-              <Link to="/dashboard" className="home-btn-primary rounded-2xl px-5 py-2.5 text-sm font-bold text-white">
-                Към таблото
+              <Link to={loggedHomeCtaTo} className="home-btn-primary rounded-2xl px-5 py-2.5 text-sm font-bold text-white">
+                {loggedHomeCtaLabel}
               </Link>
             ) : (
               <>
@@ -391,8 +393,8 @@ export default function Home() {
             </div>
             <div className="flex flex-col sm:flex-row gap-2">
               {user ? (
-                <Link to="/dashboard" className="home-btn-primary rounded-2xl px-6 py-3 text-sm font-bold text-white text-center">
-                  Към таблото
+                <Link to={loggedHomeCtaTo} className="home-btn-primary rounded-2xl px-6 py-3 text-sm font-bold text-white text-center">
+                  {loggedHomeCtaLabel}
                 </Link>
               ) : (
                 <>

@@ -13,6 +13,16 @@ const roomSchema = new mongoose.Schema(
     apartmentsCount: { type: Number, default: null },
     trialEndsAt: { type: Date, default: null },
     subscriptionExpires: { type: Date, default: null },
+    subscriptionRenewals: [
+      {
+        stripeSessionId: { type: String, default: "" },
+        byUser: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+        months: { type: Number, default: 0 },
+        apartmentsCount: { type: Number, default: 0 },
+        amountEur: { type: Number, default: 0 },
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
 
     // 💰 Финанси на входа
     finance: {
