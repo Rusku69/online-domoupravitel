@@ -294,11 +294,11 @@ router.post("/join", requireAuth, async (req, res) => {
       u.city = room.city;
       u.building = room.building;
       u.entrance = room.entrance;
-      setUserApartments(u, requestedApartments);
+      setUserApartments(u, []);
       await u.save();
 
       return res.json({
-        message: "Админът влезе в стаята.",
+        message: "Админът влезе във входа за поправка.",
         roomId: room._id,
         autoApproved: true,
       });

@@ -238,7 +238,7 @@ export default function Room() {
       });
 
       if (res?.data?.autoApproved) {
-        setMsg("Влезе в стаята като Админ.");
+        setMsg("Влезе във входа в админ режим.");
       } else {
         setMsg("Заявката е изпратена. Изчакай одобрение от домоуправителя.");
       }
@@ -266,7 +266,7 @@ export default function Room() {
       setRoomLookup(null);
 
       await fetchUser();
-      setMsg("Излезе от стаята. Можеш да влезеш в друга с код.");
+      setMsg("Излезе от входа. Можеш да влезеш в друг с код.");
     } catch (e) {
       setErr(e?.response?.data?.message || "Грешка при излизане от стаята");
     }
@@ -379,16 +379,36 @@ export default function Room() {
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex items-start justify-between gap-3 mb-4">
               <div>
-                <h1 className="text-2xl font-black text-slate-900">Стая (вход)</h1>
+                <h1 className="text-2xl font-black text-slate-900">
+                  {isAdmin ? "Влез и поправи вход" : "Стая (вход)"}
+                </h1>
                 <div className="text-sm text-slate-600 mt-1">
-                  {user.city ? `Град: ${user.city} • ` : ""}
-                  Блок: <b className="text-slate-900">{user.building || "—"}</b>
-                  {user.entrance ? ` • Вход: ${user.entrance}` : ""}
-                  {userApartmentLabel && userApartmentLabel !== "—" ? ` • Ап: ${userApartmentLabel}` : ""}
+                  {isAdmin ? (
+                    hasRoom ? (
+                      <>
+                        {user.city ? `Град: ${user.city} • ` : ""}
+                        Блок: <b className="text-slate-900">{user.building || "—"}</b>
+                        {user.entrance ? ` • Вход: ${user.entrance}` : ""}
+                      </>
+                    ) : (
+                      "Админ режим: избери вход с код или от списъка „Входове“, без избор на апартамент."
+                    )
+                  ) : (
+                    <>
+                      {user.city ? `Град: ${user.city} • ` : ""}
+                      Блок: <b className="text-slate-900">{user.building || "—"}</b>
+                      {user.entrance ? ` • Вход: ${user.entrance}` : ""}
+                      {userApartmentLabel && userApartmentLabel !== "—" ? ` • Ап: ${userApartmentLabel}` : ""}
+                    </>
+                  )}
                 </div>
                 <div className="flex flex-wrap gap-2 mt-2">
                   <Badge tone="sky">{roleLabel(user.role, user)}</Badge>
-                  <Badge tone={isApproved ? "green" : "yellow"}>членство: {user.memberStatus || "pending"}</Badge>
+                  {isAdmin ? (
+                    <Badge tone={hasRoom ? "green" : "gray"}>{hasRoom ? "вход: отворен за поправка" : "няма избран вход"}</Badge>
+                  ) : (
+                    <Badge tone={isApproved ? "green" : "yellow"}>членство: {user.memberStatus || "pending"}</Badge>
+                  )}
                   {hasRoom && !isWaitingRoomApproval && (
                     <Badge tone={subActive ? "green" : "red"}>абонамент: {subActive ? "активен" : "неактивен"}</Badge>
                   )}
@@ -408,14 +428,14 @@ export default function Room() {
                 </div>
               </div>
               <div className="text-right">
-                <div className="text-xs text-slate-500">Стая</div>
+                <div className="text-xs text-slate-500">{isAdmin ? "Админ вход" : "Стая"}</div>
                 <div className="text-sm font-semibold text-slate-900">{roomStateLabel}</div>
                 {isAdmin && hasRoom && (
                   <button
                     onClick={leaveRoomAsAdmin}
                     className="mt-2 rounded-2xl px-3 py-2 text-xs font-semibold border border-rose-300 text-rose-900 hover:bg-rose-50 transition"
                   >
-                    Излез от стаята
+                    Излез от входа
                   </button>
                 )}
               </div>
@@ -451,8 +471,27 @@ export default function Room() {
 
             {/* Status block */}
             <div id="status" className="rounded-2xl border border-slate-200 p-4 bg-white mb-4 shadow-sm">
-              <div className="font-semibold text-slate-900">Статус на достъп</div>
-              {isWaitingRoomApproval ? (
+              <div className="font-semibold text-slate-900">{isAdmin ? "Админ режим" : "Статус на достъп"}</div>
+              {isAdmin ? (
+                <>
+                  <div className="text-sm text-slate-600 mt-2">
+                    Тук админът влиза във вход само за проверка и поправка. Не избира апартамент и не се записва като живущ.
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Badge tone={hasRoom ? "green" : "gray"}>
+                      {hasRoom ? "отворен вход за поправка" : "няма избран вход"}
+                    </Badge>
+                    {hasRoom && (
+                      <Badge tone={subActive ? "green" : "red"}>абонамент: {subActive ? "активен" : "неактивен"}</Badge>
+                    )}
+                  </div>
+
+                  <div className="text-xs text-slate-500 mt-3">
+                    Можеш да влезеш с код отдолу или от „Входове“ с бутона „Влез и поправи“.
+                  </div>
+                </>
+              ) : isWaitingRoomApproval ? (
                 <>
                   <div className="text-sm text-slate-600 mt-2">
                     Заявката ти е изпратена и в момента чака преглед от домоуправителя.
@@ -493,7 +532,7 @@ export default function Room() {
             </div>
 
             {/* Subscription banner */}
-            {hasRoom && room && !isWaitingRoomApproval && (
+            {hasRoom && room && !isAdmin && !isWaitingRoomApproval && (
               <div id="subscription" className="mb-4">
                 <SubscriptionBanner room={room} />
               </div>
@@ -513,7 +552,36 @@ export default function Room() {
 
             {/* Join / Requests */}
             <div id="join">
-              {!hasRoom && (
+              {!hasRoom && isAdmin ? (
+                <div className="border border-slate-200 rounded-3xl p-4 bg-white shadow-sm">
+                  <h2 className="font-semibold mb-2 text-slate-900">Влез и поправи</h2>
+                  <p className="text-sm text-slate-600 mb-3 leading-relaxed">
+                    Въведи кода на входа, за да го отвориш в админ режим. Тук няма избор на апартамент и няма заявка за членство.
+                  </p>
+
+                  <form onSubmit={joinRoom} className="space-y-3">
+                    <input
+                      className="w-full border border-slate-200 rounded-2xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
+                      placeholder="Код на входа (пример: 150-A-123456)"
+                      value={codeInput}
+                      onChange={(e) => {
+                        setCodeInput(e.target.value);
+                        setSelectedApartments([]);
+                        setRoomLookup(null);
+                      }}
+                    />
+                    <button
+                      className="w-full rounded-2xl bg-slate-900 text-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-800 disabled:opacity-60 transition shadow-sm"
+                    >
+                      Влез и поправи
+                    </button>
+                  </form>
+
+                  <div className="mt-3 text-xs text-slate-500">
+                    По-бързо можеш да го направиш и от меню „Входове“, където всеки вход има бутон „Влез и поправи“.
+                  </div>
+                </div>
+              ) : !hasRoom ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Manager request */}
                   <div className="border border-slate-200 rounded-3xl p-4 bg-white shadow-sm">
@@ -691,7 +759,7 @@ export default function Room() {
                     </form>
                   </div>
                 </div>
-              )}
+              ) : null}
             </div>
           </div>
 

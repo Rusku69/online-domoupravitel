@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import api from "../lib/api";
 import { useAuth } from "../store/auth";
 import { PageHeader, HelpCard, ErrorBox, SuccessBox } from "../components/PageBits";
@@ -44,7 +45,8 @@ function Pill({ children, tone = "gray" }) {
 }
 
 export default function AdminRooms() {
-  const { user } = useAuth();
+  const navigate = useNavigate();
+  const { user, fetchUser } = useAuth();
   const isAdmin = user?.role === "admin";
 
   const [q, setQ] = useState("");
@@ -314,6 +316,21 @@ export default function AdminRooms() {
     }
   };
 
+  const enterRoomAsAdmin = async (room) => {
+    try {
+      setErr("");
+      setMsg("");
+
+      if (!room?.code) return setErr("Липсва код за този вход.");
+
+      await api.post("/api/rooms/join", { code: room.code, apartments: [] });
+      await fetchUser();
+      navigate("/room");
+    } catch (e) {
+      setErr(e?.response?.data?.message || "Грешка при влизане във входа");
+    }
+  };
+
   const view = useMemo(() => rooms, [rooms]);
 
   const hasSettingsChanges = useMemo(() => {
@@ -481,12 +498,20 @@ export default function AdminRooms() {
                               </div>
                             </div>
 
-                            <button
-                              onClick={() => (editId === r._id ? closeEdit() : openEdit(r))}
-                              className="shrink-0 rounded-2xl px-4 py-2 text-sm font-semibold border border-slate-300 text-slate-900 hover:bg-slate-100 transition"
-                            >
-                              {editId === r._id ? "Затвори" : "Настройки"}
-                            </button>
+                            <div className="shrink-0 flex flex-col gap-2 sm:flex-row">
+                              <button
+                                onClick={() => enterRoomAsAdmin(r)}
+                                className="rounded-2xl px-4 py-2 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 transition shadow-sm"
+                              >
+                                Влез и поправи
+                              </button>
+                              <button
+                                onClick={() => (editId === r._id ? closeEdit() : openEdit(r))}
+                                className="rounded-2xl px-4 py-2 text-sm font-semibold border border-slate-300 text-slate-900 hover:bg-slate-100 transition"
+                              >
+                                {editId === r._id ? "Затвори" : "Настройки"}
+                              </button>
+                            </div>
                           </div>
 
                           {editId === r._id && (

@@ -54,7 +54,7 @@ export default function Navbar() {
   const links = useMemo(() => {
     const out = [];
 
-    out.push({ to: "/room", label: "Стая", show: !!user });
+    out.push({ to: "/room", label: isAdmin ? "Влез и поправи" : "Стая", show: !!user });
     out.push({
       to: "/dashboard",
       label: "Табло",
@@ -235,4 +235,3 @@ export default function Navbar() {
     </header>
   );
 }
-
