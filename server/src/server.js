@@ -3,6 +3,8 @@ import mongoose from "mongoose";
 import dotenv from "dotenv";
 import cors from "cors";
 import Stripe from "stripe";
+import path from "path";
+import { fileURLToPath } from "url";
 
 import authRoutes from "../routes/auth.js";
 import announcementRoutes from "../routes/announcements.js";
@@ -19,14 +21,34 @@ import subscriptionRoutes from "../routes/subscription.js";
 
 import Payment from "../models/Payment.js";
 import Room from "../models/Room.js";
+import {
+  getPaidApartmentsForUser,
+  getPaymentTargetApartments,
+  normalizeApartmentList,
+} from "./utils/apartments.js";
 
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const serverEnvPath = path.resolve(__dirname, "../.env");
+const rootEnvPath = path.resolve(__dirname, "../../.env");
+
+dotenv.config({ path: serverEnvPath });
+if (!process.env.MONGO_URI) {
+  dotenv.config({ path: rootEnvPath });
+}
 
 console.log("ENV CHECK:", {
   mongo: !!process.env.MONGO_URI,
   stripe: (process.env.STRIPE_SECRET_KEY || "").slice(0, 8),
   hasStripe: !!process.env.STRIPE_SECRET_KEY,
 });
+
+if (!process.env.MONGO_URI) {
+  console.error(
+    `❌ Missing MONGO_URI. Add it to ${serverEnvPath} or ${rootEnvPath}.`
+  );
+  process.exit(1);
+}
 
 const app = express();
 
@@ -90,11 +112,20 @@ app.post(
         if (paymentId && roomId && userId) {
           const payment = await Payment.findById(paymentId);
           if (payment && String(payment.roomId) === String(roomId)) {
-            const alreadyPaid = (payment.paidBy || []).some(
-              (x) => String(x.user) === String(userId)
+            const alreadyProcessed = (payment.paidBy || []).some(
+              (x) => String(x?.stripeSessionId || "") === String(session.id || "")
             );
 
-            if (!alreadyPaid) {
+            if (!alreadyProcessed) {
+              const requestedApartments = normalizeApartmentList(
+                session?.metadata?.apartments ?? session?.metadata?.apartment
+              );
+              const existingPaid = new Set(getPaidApartmentsForUser(payment, userId));
+              const targetApartments = requestedApartments.length
+                ? requestedApartments
+                : getPaymentTargetApartments(payment);
+              const apartmentsToRecord = targetApartments.filter((apt) => !existingPaid.has(apt));
+
               // ✅ взимаме last4/brand от PaymentIntent
               let cardLast4 = "";
               let cardBrand = "";
@@ -118,27 +149,31 @@ app.post(
               }
 
               // ✅ записваме плащането
-              payment.paidBy.push({
-                user: userId,
-                method: "stripe",
-                paidAt: new Date(),
-                stripeSessionId: session.id,
-                stripePaymentIntentId: paymentIntentId || "",
-                cardLast4,
-                cardBrand,
-              });
+              if (apartmentsToRecord.length) {
+                payment.paidBy.push({
+                  user: userId,
+                  method: "stripe",
+                  paidAt: new Date(),
+                  stripeSessionId: session.id,
+                  stripePaymentIntentId: paymentIntentId || "",
+                  apartment: apartmentsToRecord[0] || "",
+                  apartments: apartmentsToRecord,
+                  cardLast4,
+                  cardBrand,
+                });
 
-              // (по желание) ако искаш общ статус да става "paid" когато НЯКОЙ плати - оставяме старото
-              // payment.status = "paid";
-              // payment.paidAt = new Date();
+                await payment.save();
 
-              await payment.save();
-
-              const room = await Room.findById(roomId);
-              if (room?.finance?.locked) {
-                room.finance.balance =
-                  Number(room.finance.balance || 0) + Number(payment.amount || 0);
-                await room.save();
+                const room = await Room.findById(roomId);
+                if (room?.finance?.locked) {
+                  const paidTotal =
+                    Number(session?.amount_total || 0) > 0
+                      ? Number(session.amount_total) / 100
+                      : Number(payment.amount || 0) * apartmentsToRecord.length;
+                  room.finance.balance =
+                    Number(room.finance.balance || 0) + paidTotal;
+                  await room.save();
+                }
               }
             }
           }

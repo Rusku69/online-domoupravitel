@@ -13,6 +13,8 @@ const paidBySchema = new mongoose.Schema(
     stripeSessionId: { type: String, default: "" },
     stripePaymentIntentId: { type: String, default: "" },
 
+    apartment: { type: String, default: "" },
+    apartments: { type: [String], default: [] },
     cardLast4: { type: String, default: "" },
     cardBrand: { type: String, default: "" },
   },
@@ -26,6 +28,7 @@ const paymentSchema = new mongoose.Schema(
     building: { type: String, default: "" },
     entrance: { type: String, default: "" },
     apartment: { type: String, default: "" },
+    apartments: { type: [String], default: [] },
 
     description: { type: String, required: true },
     dateFrom: { type: Date, default: null },

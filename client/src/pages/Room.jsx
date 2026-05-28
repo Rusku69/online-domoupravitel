@@ -4,6 +4,7 @@ import { useAuth } from "../store/auth";
 import SubscriptionBanner from "../components/SubscriptionBanner";
 import { Link } from "react-router-dom";
 import { roleLabel } from "../lib/roles";
+import { formatApartmentList, getUserApartments, normalizeApartmentList } from "../lib/apartments";
 
 const ROOM_VERIFY_ENFORCE_FROM = import.meta.env.VITE_ROOM_EMAIL_VERIFY_ENFORCE_FROM || "2026-02-12T00:00:00.000Z";
 
@@ -45,7 +46,9 @@ export default function Room() {
   const [room, setRoom] = useState(null);
   const [pending, setPending] = useState([]);
   const [codeInput, setCodeInput] = useState("");
-  const [apartmentInput, setApartmentInput] = useState("");
+  const [selectedApartments, setSelectedApartments] = useState([]);
+  const [roomLookup, setRoomLookup] = useState(null);
+  const [lookupLoading, setLookupLoading] = useState(false);
   const [apartmentsCountInput, setApartmentsCountInput] = useState("");
   const [adminFinanceHolderInput, setAdminFinanceHolderInput] = useState("");
   const [adminFinanceIbanInput, setAdminFinanceIbanInput] = useState("");
@@ -55,7 +58,8 @@ export default function Room() {
   const [reqCity, setReqCity] = useState("");
   const [reqBuilding, setReqBuilding] = useState("");
   const [reqEntrance, setReqEntrance] = useState("");
-  const [reqApartment, setReqApartment] = useState("");
+  const [reqApartmentInput, setReqApartmentInput] = useState("");
+  const [reqSelectedApartments, setReqSelectedApartments] = useState([]);
 
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
@@ -68,9 +72,17 @@ export default function Room() {
 
   const isApproved = user?.memberStatus === "approved";
   const hasRoom = !!user?.roomId;
-  const requiresRoomEmailVerify = shouldRequireRoomEmailVerify(user) && !user?.emailVerified;
+  const isWaitingRoomApproval = hasRoom && !isApproved && !isManager && !isAdmin;
+  const requiresManagerEmailVerify =
+    isResident && shouldRequireRoomEmailVerify(user) && !user?.emailVerified;
 
   const safePending = useMemo(() => (pending || []).filter(Boolean), [pending]);
+  const userApartmentLabel = useMemo(() => formatApartmentList(getUserApartments(user)), [user]);
+  const selectedApartmentLabel = useMemo(() => formatApartmentList(selectedApartments, ""), [selectedApartments]);
+  const selectedRequestApartmentLabel = useMemo(
+    () => formatApartmentList(reqSelectedApartments, ""),
+    [reqSelectedApartments]
+  );
 
   const loadRoomInfo = async () => {
     if (!user) return;
@@ -82,6 +94,8 @@ export default function Room() {
       if (!user.roomId) {
         setRoom(null);
         setPending([]);
+        setRoomLookup(null);
+        setSelectedApartments([]);
         return;
       }
 
@@ -120,6 +134,50 @@ export default function Room() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.roomId, user?.role, user?.memberStatus]);
 
+  const lookupRoomByCode = async (incomingCode = codeInput) => {
+    const code = String(incomingCode || "").trim();
+    if (!code || isAdmin) {
+      setRoomLookup(null);
+      return null;
+    }
+
+    try {
+      setErr("");
+      setLookupLoading(true);
+      const res = await api.get("/api/rooms/lookup", { params: { code } });
+      const nextLookup = res.data || null;
+      setRoomLookup(nextLookup);
+      setSelectedApartments((current) =>
+        current.filter((apt) => (nextLookup?.availableApartments || []).includes(apt))
+      );
+      return nextLookup;
+    } catch (e) {
+      setRoomLookup(null);
+      setErr(e?.response?.data?.message || "Грешка при проверка на кода.");
+      return null;
+    } finally {
+      setLookupLoading(false);
+    }
+  };
+
+  const toggleSelectedApartment = (apartment) => {
+    setSelectedApartments((current) =>
+      current.includes(apartment) ? current.filter((apt) => apt !== apartment) : [...current, apartment]
+    );
+  };
+
+  const addRequestedApartments = (value = reqApartmentInput) => {
+    const next = normalizeApartmentList(value);
+    if (!next.length) return;
+
+    setReqSelectedApartments((current) => normalizeApartmentList([...current, ...next]));
+    setReqApartmentInput("");
+  };
+
+  const removeRequestedApartment = (apartment) => {
+    setReqSelectedApartments((current) => current.filter((apt) => apt !== apartment));
+  };
+
   // изпращане на manager request
   const sendManagerRequest = async (e) => {
     e.preventDefault();
@@ -127,7 +185,7 @@ export default function Room() {
       setErr("");
       setMsg("");
 
-      if (requiresRoomEmailVerify) {
+      if (requiresManagerEmailVerify) {
         return setErr("Потвърди имейла си, за да подаваш заявка за домоуправител.");
       }
 
@@ -135,7 +193,11 @@ export default function Room() {
         return setErr("Попълни град, блок и вход.");
       }
 
-      if (!reqApartment.trim()) {
+      const requestedApartments = normalizeApartmentList([
+        ...reqSelectedApartments,
+        ...normalizeApartmentList(reqApartmentInput),
+      ]);
+      if (!requestedApartments.length) {
         return setErr("Попълни апартамент (домоуправителят трябва да е живущ).");
       }
 
@@ -143,10 +205,12 @@ export default function Room() {
         city: reqCity.trim(),
         building: reqBuilding.trim(),
         entrance: reqEntrance.trim().toUpperCase(),
-        apartment: reqApartment.trim(),
+        apartments: requestedApartments,
       });
 
       setMsg("Заявката за домоуправител е изпратена. Изчакай Админ одобрение.");
+      setReqApartmentInput("");
+      setReqSelectedApartments([]);
       await fetchUser();
       await loadRoomInfo();
     } catch (e) {
@@ -160,16 +224,17 @@ export default function Room() {
       setErr("");
       setMsg("");
 
-      if (requiresRoomEmailVerify) {
-        return setErr("Потвърди имейла си, за да се присъединиш към стая.");
-      }
-
       if (!codeInput.trim()) return setErr("Въведи код за стая.");
-      if (!isAdmin && !apartmentInput.trim()) return setErr("Въведи апартамент.");
+      if (!isAdmin && !selectedApartments.length) return setErr("Избери поне един апартамент.");
+
+      if (!isAdmin && !roomLookup) {
+        const lookedUpRoom = await lookupRoomByCode(codeInput.trim());
+        if (!lookedUpRoom) return;
+      }
 
       const res = await api.post("/api/rooms/join", {
         code: codeInput.trim(),
-        apartment: apartmentInput.trim(),
+        apartments: selectedApartments,
       });
 
       if (res?.data?.autoApproved) {
@@ -197,7 +262,8 @@ export default function Room() {
       setAdminFinanceHolderInput("");
       setAdminFinanceIbanInput("");
       setCodeInput("");
-      setApartmentInput("");
+      setSelectedApartments([]);
+      setRoomLookup(null);
 
       await fetchUser();
       setMsg("Излезе от стаята. Можеш да влезеш в друга с код.");
@@ -215,6 +281,18 @@ export default function Room() {
       await loadRoomInfo();
     } catch (e) {
       setErr(e?.response?.data?.message || "Грешка при одобряване");
+    }
+  };
+
+  const rejectResident = async (memberId) => {
+    try {
+      setErr("");
+      setMsg("");
+      await api.post("/api/rooms/reject", { memberId });
+      setMsg("Заявката е отхвърлена.");
+      await loadRoomInfo();
+    } catch (e) {
+      setErr(e?.response?.data?.message || "Грешка при отхвърляне");
     }
   };
 
@@ -291,6 +369,8 @@ export default function Room() {
 
   const subActive = !!room?.subscription?.active;
   const managerRequestStatus = user?.managerRequestStatus || "none";
+  const pendingApartmentLabel = room?.pendingRequest?.apartmentLabel || userApartmentLabel;
+  const roomStateLabel = hasRoom ? (isWaitingRoomApproval ? "В изчакване" : "Активна") : "Няма";
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
@@ -304,12 +384,12 @@ export default function Room() {
                   {user.city ? `Град: ${user.city} • ` : ""}
                   Блок: <b className="text-slate-900">{user.building || "—"}</b>
                   {user.entrance ? ` • Вход: ${user.entrance}` : ""}
-                  {user.apartment ? ` • Ап: ${user.apartment}` : ""}
+                  {userApartmentLabel && userApartmentLabel !== "—" ? ` • Ап: ${userApartmentLabel}` : ""}
                 </div>
                 <div className="flex flex-wrap gap-2 mt-2">
-                  <Badge tone="sky">{roleLabel(user.role)}</Badge>
+                  <Badge tone="sky">{roleLabel(user.role, user)}</Badge>
                   <Badge tone={isApproved ? "green" : "yellow"}>членство: {user.memberStatus || "pending"}</Badge>
-                  {hasRoom && (
+                  {hasRoom && !isWaitingRoomApproval && (
                     <Badge tone={subActive ? "green" : "red"}>абонамент: {subActive ? "активен" : "неактивен"}</Badge>
                   )}
                   {isResident && (
@@ -329,7 +409,7 @@ export default function Room() {
               </div>
               <div className="text-right">
                 <div className="text-xs text-slate-500">Стая</div>
-                <div className="text-sm font-semibold text-slate-900">{hasRoom ? "Активна" : "Няма"}</div>
+                <div className="text-sm font-semibold text-slate-900">{roomStateLabel}</div>
                 {isAdmin && hasRoom && (
                   <button
                     onClick={leaveRoomAsAdmin}
@@ -353,11 +433,11 @@ export default function Room() {
               </div>
             )}
 
-            {!hasRoom && requiresRoomEmailVerify && (
+            {!hasRoom && requiresManagerEmailVerify && (
               <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
                 <div className="font-semibold text-amber-900">Потвърди имейла си</div>
                 <div className="mt-1 text-sm text-amber-900/90">
-                  За този акаунт първо трябва да потвърдиш имейла, преди да можеш да влизаш в стая или да подаваш заявка за домоуправител.
+                  За този акаунт първо трябва да потвърдиш имейла, ако искаш да подаваш заявка за домоуправител.
                 </div>
                 <button
                   onClick={resendVerify}
@@ -372,32 +452,54 @@ export default function Room() {
             {/* Status block */}
             <div id="status" className="rounded-2xl border border-slate-200 p-4 bg-white mb-4 shadow-sm">
               <div className="font-semibold text-slate-900">Статус на достъп</div>
-              <div className="text-sm text-slate-600 mt-2">
-                Тук се управлява принадлежността към стая (вход). Стая има свой код, членове и правила за достъп.
-                Достъпът до данни (плащания/обяви/сигнали) е възможен след одобрение.
-              </div>
+              {isWaitingRoomApproval ? (
+                <>
+                  <div className="text-sm text-slate-600 mt-2">
+                    Заявката ти е изпратена и в момента чака преглед от домоуправителя.
+                  </div>
 
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Badge tone={hasRoom ? "green" : "red"}>стая: {hasRoom ? "активна" : "няма"}</Badge>
-                <Badge tone={isApproved ? "green" : "yellow"}>достъп: {isApproved ? "одобрен" : "чака"}</Badge>
-                {hasRoom && (
-                  <Badge tone={subActive ? "green" : "red"}>абонамент: {subActive ? "активен" : "неактивен"}</Badge>
-                )}
-              </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Badge tone="green">стая: заявена</Badge>
+                    <Badge tone="yellow">статус: в изчакване</Badge>
+                    {pendingApartmentLabel && pendingApartmentLabel !== "—" && (
+                      <Badge tone="sky">апартаменти: {pendingApartmentLabel}</Badge>
+                    )}
+                  </div>
 
-              <div className="text-xs text-slate-500 mt-3">
-                Ако не си одобрен, някои секции могат да са ограничени, за да няма достъп до чужда информация.
-              </div>
+                  <div className="text-xs text-slate-500 mt-3">
+                    След одобрение автоматично ще получиш достъп до останалите секции на входа.
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-sm text-slate-600 mt-2">
+                    Тук се управлява принадлежността към стая (вход). Стая има свой код, членове и правила за достъп.
+                    Достъпът до данни (плащания/обяви/сигнали) е възможен след одобрение.
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Badge tone={hasRoom ? "green" : "red"}>стая: {hasRoom ? "активна" : "няма"}</Badge>
+                    <Badge tone={isApproved ? "green" : "yellow"}>достъп: {isApproved ? "одобрен" : "чака"}</Badge>
+                    {hasRoom && (
+                      <Badge tone={subActive ? "green" : "red"}>абонамент: {subActive ? "активен" : "неактивен"}</Badge>
+                    )}
+                  </div>
+
+                  <div className="text-xs text-slate-500 mt-3">
+                    Ако не си одобрен, някои секции могат да са ограничени, за да няма достъп до чужда информация.
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Subscription banner */}
-            {hasRoom && room && (
+            {hasRoom && room && !isWaitingRoomApproval && (
               <div id="subscription" className="mb-4">
                 <SubscriptionBanner room={room} />
               </div>
             )}
 
-            {isManager && hasRoom && !subActive && (
+            {isManager && hasRoom && !isWaitingRoomApproval && !subActive && (
               <div className="mt-3" id="subscription">
                 <Link
                   to="/subscription"
@@ -417,7 +519,7 @@ export default function Room() {
                   <div className="border border-slate-200 rounded-3xl p-4 bg-white shadow-sm">
                     <h2 className="font-semibold mb-2 text-slate-900">Домоуправител</h2>
                     <p className="text-sm text-slate-600 mb-3 leading-relaxed">
-                      Подай заявка към Админ: въведи град/блок/вход и апартамент. След одобрение ставаш домоуправител и
+                      Подай заявка към Админ: въведи град/блок/вход и апартаментите си. След одобрение ставаш домоуправител и
                       стаята се създава автоматично.
                     </p>
 
@@ -451,13 +553,42 @@ export default function Room() {
                         />
                         <input
                           className="w-full border border-slate-200 rounded-2xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
-                          placeholder="Апартамент (пример: 12)"
-                          value={reqApartment}
-                          onChange={(e) => setReqApartment(e.target.value)}
+                          placeholder="Апартаменти (пример: 12, 13)"
+                          value={reqApartmentInput}
+                          onChange={(e) => setReqApartmentInput(e.target.value)}
                         />
+                        <div className="text-xs text-slate-500">Можеш да въведеш повече от един апартамент, разделени със запетая.</div>
 
                         <button
-                          disabled={requiresRoomEmailVerify}
+                          type="button"
+                          onClick={() => addRequestedApartments()}
+                          disabled={!reqApartmentInput.trim()}
+                          className="w-full rounded-2xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-900 hover:bg-slate-100 disabled:opacity-60 transition"
+                        >
+                          Добави апартамент/и
+                        </button>
+                        {reqSelectedApartments.length > 0 && (
+                          <div className="rounded-2xl border border-slate-200 p-3">
+                            <div className="text-xs font-semibold text-slate-600 mb-2">Избрани апартаменти</div>
+                            <div className="flex flex-wrap gap-2">
+                              {reqSelectedApartments.map((apt) => (
+                                <button
+                                  key={apt}
+                                  type="button"
+                                  onClick={() => removeRequestedApartment(apt)}
+                                  className="rounded-2xl border border-slate-900 bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+                                >
+                                  Ап. {apt}
+                                </button>
+                              ))}
+                            </div>
+                            <div className="mt-3 text-xs text-slate-500">
+                              Избрани: <b>{selectedRequestApartmentLabel || "няма"}</b>
+                            </div>
+                          </div>
+                        )}
+                        <button
+                          disabled={requiresManagerEmailVerify}
                           className="w-full rounded-2xl bg-slate-900 text-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-800 disabled:opacity-60 transition shadow-sm"
                         >
                           Изпрати заявка
@@ -465,7 +596,7 @@ export default function Room() {
                       </form>
                     )}
 
-                    {requiresRoomEmailVerify && (
+                    {requiresManagerEmailVerify && (
                       <p className="text-xs text-amber-700 mt-2">Изисква се потвърден имейл.</p>
                     )}
 
@@ -479,41 +610,107 @@ export default function Room() {
                   <div className="border border-slate-200 rounded-3xl p-4 bg-white shadow-sm">
                     <h2 className="font-semibold mb-2 text-slate-900">Живущ</h2>
                     <p className="text-sm text-slate-600 mb-3 leading-relaxed">
-                      Въведи код за стаята и апартамент. Домоуправителят ще одобри заявката и след това ще имаш достъп.
+                      Въведи кода на стаята, провери свободните апартаменти и избери всички, които искаш да заявиш.
                     </p>
 
-                    <form onSubmit={joinRoom} className="space-y-2">
-                      <input
-                        className="w-full border border-slate-200 rounded-2xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
-                        placeholder="Код (пример: 150-A-123456)"
-                        value={codeInput}
-                        onChange={(e) => setCodeInput(e.target.value)}
-                      />
-                      <input
-                        className="w-full border border-slate-200 rounded-2xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
-                        placeholder="Апартамент (пример: 12)"
-                        value={apartmentInput}
-                        onChange={(e) => setApartmentInput(e.target.value)}
-                      />
+                    <form onSubmit={joinRoom} className="space-y-3">
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <input
+                          className="flex-1 border border-slate-200 rounded-2xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
+                          placeholder="Код (пример: 150-A-123456)"
+                          value={codeInput}
+                          onChange={(e) => {
+                            setCodeInput(e.target.value);
+                            setRoomLookup(null);
+                            setSelectedApartments([]);
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => lookupRoomByCode()}
+                          disabled={!codeInput.trim() || lookupLoading}
+                          className="rounded-2xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-900 hover:bg-slate-100 disabled:opacity-60 transition"
+                        >
+                          {lookupLoading ? "Проверка..." : "Провери кода"}
+                        </button>
+                      </div>
+
+                      {roomLookup && (
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                          <div className="font-semibold text-slate-900">
+                            {roomLookup.city || "—"} • Блок {roomLookup.building || "—"} • Вход {roomLookup.entrance || "—"}
+                          </div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            Апартаменти общо: {roomLookup.apartmentsCount ?? "—"} • Свободни:{" "}
+                            {(roomLookup.availableApartments || []).length} • Заети:{" "}
+                            {(roomLookup.occupiedApartments || []).length}
+                          </div>
+                        </div>
+                      )}
+
+                      {roomLookup && (
+                        <div className="rounded-2xl border border-slate-200 p-3">
+                          <div className="text-xs font-semibold text-slate-600 mb-2">Избери апартаментите си</div>
+                          {(roomLookup.availableApartments || []).length === 0 ? (
+                            <div className="text-sm text-slate-500">В момента няма свободни апартаменти за заявка.</div>
+                          ) : (
+                            <>
+                              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                                {(roomLookup.availableApartments || []).map((apt) => {
+                                  const selected = selectedApartments.includes(apt);
+                                  return (
+                                    <button
+                                      key={apt}
+                                      type="button"
+                                      onClick={() => toggleSelectedApartment(apt)}
+                                      className={`rounded-2xl border px-3 py-2 text-sm font-semibold transition ${
+                                        selected
+                                          ? "border-slate-900 bg-slate-900 text-white"
+                                          : "border-slate-200 bg-white text-slate-900 hover:bg-slate-100"
+                                      }`}
+                                    >
+                                      Ап. {apt}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+
+                              <div className="mt-3 text-xs text-slate-500">
+                                Избрани: <b>{selectedApartmentLabel || "няма"}</b>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
+
                       <button
-                        disabled={requiresRoomEmailVerify}
                         className="w-full rounded-2xl bg-slate-900 text-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-800 disabled:opacity-60 transition shadow-sm"
                       >
-                        Влез
+                        Изпрати заявка
                       </button>
                     </form>
-
-                    {requiresRoomEmailVerify && (
-                      <p className="text-xs text-amber-700 mt-2">Изисква се потвърден имейл.</p>
-                    )}
                   </div>
                 </div>
               )}
             </div>
           </div>
 
+          {isWaitingRoomApproval && (
+            <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+              <div className="font-semibold text-amber-900">Заявката е в процес на изчакване</div>
+              <div className="mt-2 text-sm text-amber-900/90">
+                Домоуправителят още не е прегледал заявката ти. Докато чакаш, тук ще виждаш само нейния статус.
+              </div>
+              {pendingApartmentLabel && pendingApartmentLabel !== "—" && (
+                <div className="mt-3 text-sm text-amber-900/90">
+                  Заявени апартаменти: <b>{pendingApartmentLabel}</b>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Room details */}
-          {hasRoom && (
+          {hasRoom && !isWaitingRoomApproval && (
             <div className="space-y-4">
               {isManager && (
                 <div className="border border-slate-200 rounded-3xl p-4 bg-white shadow-sm" id="settings">
@@ -643,19 +840,30 @@ export default function Room() {
                   ) : (
                     <div className="space-y-2">
                       {safePending.map((p) => (
-                        <div key={p._id} className="flex items-center justify-between border border-slate-200 rounded-2xl p-3 bg-white">
-                          <div className="text-sm text-slate-700">
+                        <div
+                          key={p._id}
+                          className="flex flex-col gap-3 border border-slate-200 rounded-2xl p-3 bg-white sm:flex-row sm:items-center sm:justify-between"
+                        >
+                          <div className="text-sm text-slate-700 min-w-0">
                             <b className="text-slate-900">{p?.name || "—"}</b> • {p?.email || "—"}
                             {p?.phone ? ` • ${p.phone}` : ""}
-                            {p?.apartment ? ` • ап. ${p.apartment}` : ""}
+                            {p?.apartmentLabel ? ` • ап. ${p.apartmentLabel}` : p?.apartment ? ` • ап. ${p.apartment}` : ""}
                           </div>
                           {isManager && (
-                            <button
-                              onClick={() => approveResident(p._id)}
-                              className="text-xs px-3 py-2 rounded-2xl bg-slate-900 text-white hover:bg-slate-800 transition shadow-sm"
-                            >
-                              Одобри
-                            </button>
+                            <div className="flex items-center gap-2 sm:justify-end">
+                              <button
+                                onClick={() => rejectResident(p._id)}
+                                className="text-xs px-3 py-2 rounded-2xl border border-rose-300 text-rose-900 hover:bg-rose-50 transition"
+                              >
+                                Отхвърли
+                              </button>
+                              <button
+                                onClick={() => approveResident(p._id)}
+                                className="text-xs px-3 py-2 rounded-2xl bg-slate-900 text-white hover:bg-slate-800 transition shadow-sm"
+                              >
+                                Одобри
+                              </button>
+                            </div>
                           )}
                         </div>
                       ))}
@@ -665,9 +873,9 @@ export default function Room() {
                   <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
                     <div className="font-semibold">Процес на одобрение</div>
                     <ul className="mt-2 list-disc pl-5 space-y-1">
-                      <li>Живущ подава заявка с код и апартамент.</li>
-                      <li>Домоуправителят вижда заявката в списъка и одобрява.</li>
-                      <li>След одобрение потребителят получава достъп до секциите на входа.</li>
+                      <li>Живущ подава заявка с код и един или повече апартаменти.</li>
+                      <li>Домоуправителят вижда заявката в списъка и може да я одобри или отхвърли.</li>
+                      <li>След одобрение точно тези апартаменти се записват към профила и по тях се смятат плащанията.</li>
                     </ul>
                   </div>
                 </div>

@@ -2,7 +2,17 @@ import { useEffect, useMemo, useState } from "react";
 import api from "../lib/api";
 import { useAuth } from "../store/auth";
 import { PageHeader, HelpCard, ErrorBox, SuccessBox } from "../components/PageBits";
-import SiteFooter from "../components/SiteFooter";
+import {
+  countPaidUnits,
+  formatApartmentList,
+  getOutstandingApartmentsForUser,
+  getPaidApartmentsForUser,
+  getPaidEntryApartments,
+  getPaymentTargetApartments,
+  getUserApartments,
+  normalizeApartmentList,
+  paymentScopeLabel,
+} from "../lib/apartments";
 
 function fmtDate(d) {
   if (!d) return "—";
@@ -22,6 +32,13 @@ function fmtDateTime(d) {
   }
 }
 
+function residentState(meta) {
+  if (!meta?.owedApartments?.length) return "unpaid";
+  if (!meta.outstandingApartments.length && meta.paidApartments.length) return "paid";
+  if (meta.paidApartments.length) return "partial";
+  return "unpaid";
+}
+
 export default function Payments() {
   const { user } = useAuth();
   const isManager = user?.role === "manager";
@@ -31,18 +48,18 @@ export default function Payments() {
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
 
-  // create form (manager)
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
-  const [apartment, setApartment] = useState(""); // "" => всички
+  const [apartment, setApartment] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
-  // filters / archive feel
   const [q, setQ] = useState("");
-  const [scopeFilter, setScopeFilter] = useState("all"); // all | all_apts | single_apt
-  const [statusFilter, setStatusFilter] = useState("all"); // all | paid_any | unpaid_all | paid_by_me | unpaid_by_me
+  const [scopeFilter, setScopeFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [showCount, setShowCount] = useState(50);
+
+  const ownedApartments = useMemo(() => getUserApartments(user), [user]);
 
   const load = async () => {
     try {
@@ -62,12 +79,9 @@ export default function Payments() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // показваме съобщение при връщане от Stripe success/cancel
-  // auto refresh + clean URL
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
-
       const paid = params.get("paid") === "1";
       const canceled = params.get("canceled") === "1";
 
@@ -87,17 +101,26 @@ export default function Payments() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const myId = user?.id || user?._id;
-
-  // за resident: намираме "моето" плащане за конкретно начисление
-  const myPaidMap = useMemo(() => {
+  const residentMetaById = useMemo(() => {
     const map = new Map();
-    for (const p of items) {
-      const hit = (p.paidBy || []).find((x) => String(x.user?._id || x.user) === String(myId));
-      if (hit) map.set(String(p._id), hit);
+
+    for (const payment of items) {
+      const targets = getPaymentTargetApartments(payment);
+      const owedApartments = targets.length
+        ? ownedApartments.filter((apt) => targets.includes(apt))
+        : ownedApartments;
+      const paidApartments = getPaidApartmentsForUser(payment, user);
+      const outstandingApartments = getOutstandingApartmentsForUser(payment, user);
+
+      map.set(String(payment._id), {
+        owedApartments,
+        paidApartments,
+        outstandingApartments,
+      });
     }
+
     return map;
-  }, [items, myId]);
+  }, [items, ownedApartments, user]);
 
   const createPayment = async (e) => {
     e.preventDefault();
@@ -107,8 +130,8 @@ export default function Payments() {
 
       await api.post("/api/payments/create", {
         description,
-        amount, // EUR
-        apartment,
+        amount,
+        apartments: normalizeApartmentList(apartment),
         dateFrom: dateFrom || null,
         dateTo: dateTo || null,
       });
@@ -125,7 +148,6 @@ export default function Payments() {
     }
   };
 
-  // Stripe Checkout (guest)
   const payWithStripe = async (id) => {
     try {
       setErr("");
@@ -148,52 +170,60 @@ export default function Payments() {
   const filtered = useMemo(() => {
     const query = String(q || "").trim().toLowerCase();
 
-    return items.filter((p) => {
-      const isForAll = !String(p.apartment || "").trim();
-      const isForSingle = !!String(p.apartment || "").trim();
+    return items.filter((payment) => {
+      const targets = getPaymentTargetApartments(payment);
+      const isForAll = targets.length === 0;
+      const isSpecific = targets.length > 0;
 
       if (scopeFilter === "all_apts" && !isForAll) return false;
-      if (scopeFilter === "single_apt" && !isForSingle) return false;
+      if (scopeFilter === "single_apt" && !isSpecific) return false;
 
-      const paidCount = (p.paidBy || []).length;
-      const paidAny = paidCount > 0;
-
-      const myPaid = myPaidMap.get(String(p._id)) || null;
-      const myPaidBool = !!myPaid;
+      const paidUnits = countPaidUnits(payment);
+      const paidAny = paidUnits > 0;
 
       if (statusFilter === "paid_any" && !paidAny) return false;
       if (statusFilter === "unpaid_all" && paidAny) return false;
 
       if (!isManager) {
-        if (statusFilter === "paid_by_me" && !myPaidBool) return false;
-        if (statusFilter === "unpaid_by_me" && myPaidBool) return false;
+        const meta = residentMetaById.get(String(payment._id));
+        const state = residentState(meta);
+
+        if (statusFilter === "paid_by_me" && state === "unpaid") return false;
+        if (statusFilter === "unpaid_by_me" && state === "paid") return false;
       }
 
       if (!query) return true;
 
-      const hay = `${p?.description || ""} ${p?.apartment || ""} ${fmtDate(p?.dateFrom)} ${fmtDate(
-        p?.dateTo
-      )}`.toLowerCase();
+      const hay = [
+        payment?.description || "",
+        paymentScopeLabel(payment),
+        fmtDate(payment?.dateFrom),
+        fmtDate(payment?.dateTo),
+      ]
+        .join(" ")
+        .toLowerCase();
+
       return hay.includes(query);
     });
-  }, [items, q, scopeFilter, statusFilter, isManager, myPaidMap]);
+  }, [items, q, scopeFilter, statusFilter, isManager, residentMetaById]);
 
   const shortList = useMemo(() => filtered.slice(0, showCount), [filtered, showCount]);
 
   const stats = useMemo(() => {
-    const total = items.length;
-    const filteredCount = filtered.length;
-
     let paidAny = 0;
     let unpaidAll = 0;
 
-    for (const p of items) {
-      const paidCount = (p.paidBy || []).length;
-      if (paidCount > 0) paidAny += 1;
+    for (const payment of items) {
+      if (countPaidUnits(payment) > 0) paidAny += 1;
       else unpaidAll += 1;
     }
 
-    return { total, filteredCount, paidAny, unpaidAll };
+    return {
+      total: items.length,
+      filteredCount: filtered.length,
+      paidAny,
+      unpaidAll,
+    };
   }, [items, filtered]);
 
   if (!user) return null;
@@ -206,9 +236,9 @@ export default function Payments() {
             title="Плащания"
             subtitle={
               <>
-                Тук се управляват начисленията за входа. Няма избор на вход — ти вече си във конкретната стая.
+                Тук се управляват начисленията за входа.
                 <br />
-                Важно: ако начислението е за конкретен апартамент, ще го вижда само този апартамент.
+                Ако един профил има 2 или 3 апартамента, начисленията и плащанията се смятат по всеки апартамент поотделно.
                 <br />
                 Плащането става през Stripe Checkout като гост. Всички суми са в EUR (€).
               </>
@@ -227,14 +257,11 @@ export default function Payments() {
           <SuccessBox>{msg}</SuccessBox>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {/* MAIN */}
             <div className="lg:col-span-2 space-y-4">
-              {/* Summary / material */}
               <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
                 <div className="font-black text-slate-900">Обобщение</div>
                 <div className="text-sm text-slate-600 mt-2">
-                  Тази секция показва списък с начисления и статус на плащанията. Начисление може да бъде “за всички” или
-                  “за конкретен апартамент”. При плащане системата записва кой потребител е платил чрез Stripe webhook.
+                  Начисление може да е за всички апартаменти, за един апартамент или за няколко конкретни апартамента.
                 </div>
 
                 <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3 text-sm">
@@ -247,31 +274,21 @@ export default function Payments() {
                     <div className="text-2xl font-black text-slate-900">{stats.filteredCount}</div>
                   </div>
                   <div className="rounded-2xl border border-slate-200 p-4">
-                    <div className="text-xs text-slate-500">Има платили</div>
+                    <div className="text-xs text-slate-500">Има плащания</div>
                     <div className="text-2xl font-black text-slate-900">{stats.paidAny}</div>
                   </div>
                   <div className="rounded-2xl border border-slate-200 p-4">
-                    <div className="text-xs text-slate-500">Без платили</div>
+                    <div className="text-xs text-slate-500">Без плащания</div>
                     <div className="text-2xl font-black text-slate-900">{stats.unpaidAll}</div>
-                  </div>
-                </div>
-
-                <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                  <div className="font-semibold">Бележка</div>
-                  <div className="mt-1">
-                    Вътрешният баланс (в “Справки”) се увеличава само ако финансите са заключени. Това е отчетност в
-                    системата, не банково салдо.
                   </div>
                 </div>
               </div>
 
-              {/* Manager create */}
               {isManager && (
                 <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
                   <div className="font-black text-slate-900">Ново начисление</div>
                   <div className="text-sm text-slate-600 mt-2">
-                    Създаваш начисление за всички (празен апартамент) или за конкретен апартамент (пример: 12). Сумата е в
-                    EUR (€).
+                    Остави полето за апартаменти празно за общо начисление или въведи един/няколко апартамента, разделени със запетая.
                   </div>
 
                   <form onSubmit={createPayment} className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -297,13 +314,13 @@ export default function Payments() {
 
                     <div>
                       <label className="block text-xs font-semibold text-slate-600 mb-1">
-                        Апартамент (празно = за всички)
+                        Апартаменти (празно = за всички)
                       </label>
                       <input
                         className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
                         value={apartment}
                         onChange={(e) => setApartment(e.target.value)}
-                        placeholder="пример: 12"
+                        placeholder="пример: 12 или 12, 13"
                       />
                     </div>
 
@@ -336,13 +353,12 @@ export default function Payments() {
                 </div>
               )}
 
-              {/* Archive list */}
               <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
                 <div className="font-black text-slate-900">Начисления</div>
                 <div className="text-sm text-slate-600 mt-2">
                   {isManager
-                    ? "Виждаш всички начисления в стаята. Ако апартамент е попълнен — начислението е само за него."
-                    : "Виждаш начисленията за всички и тези, които са само за твоя апартамент."}
+                    ? "Виждаш всички начисления в стаята и колко апартамента са ги платили."
+                    : "Виждаш само начисленията, които важат за твоите апартаменти."}
                 </div>
 
                 <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -351,7 +367,7 @@ export default function Payments() {
                     <input
                       value={q}
                       onChange={(e) => setQ(e.target.value)}
-                      placeholder="пример: почистване, асансьор, ап. 12..."
+                      placeholder="пример: почистване, ап. 12, асансьор..."
                       className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
                     />
                   </div>
@@ -365,7 +381,7 @@ export default function Payments() {
                     >
                       <option value="all">Всички</option>
                       <option value="all_apts">Само за всички</option>
-                      <option value="single_apt">Само за апартамент</option>
+                      <option value="single_apt">Само за апартамент/и</option>
                     </select>
                   </div>
 
@@ -392,10 +408,10 @@ export default function Payments() {
                       className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
                     >
                       <option value="all">Всички</option>
-                      <option value="paid_any">Има платили</option>
-                      <option value="unpaid_all">Без платили</option>
-                      {!isManager && <option value="paid_by_me">Платени от мен</option>}
-                      {!isManager && <option value="unpaid_by_me">Неплатени от мен</option>}
+                      <option value="paid_any">Има плащания</option>
+                      <option value="unpaid_all">Без плащания</option>
+                      {!isManager && <option value="paid_by_me">Платени/частично платени от мен</option>}
+                      {!isManager && <option value="unpaid_by_me">Имат остатък за мен</option>}
                     </select>
                   </div>
 
@@ -420,29 +436,32 @@ export default function Payments() {
                   <div className="text-sm text-slate-500 mt-4">Няма начисления по тези критерии.</div>
                 ) : (
                   <div className="mt-4 space-y-3">
-                    {shortList.map((p) => {
-                      const myPaid = myPaidMap.get(String(p._id)) || null;
-                      const scope = p.apartment ? `Само за ап. ${p.apartment}` : "За всички апартаменти";
-
-                      const paidCount = (p.paidBy || []).length;
-                      const amountNum = Number(p.amount) || 0;
-                      const collected = paidCount * amountNum;
+                    {shortList.map((payment) => {
+                      const meta = residentMetaById.get(String(payment._id));
+                      const state = residentState(meta);
+                      const amountNum = Number(payment.amount) || 0;
+                      const paidUnits = countPaidUnits(payment);
+                      const collected = paidUnits * amountNum;
 
                       return (
-                        <div key={p._id} className="rounded-3xl border border-slate-200 p-5 bg-white shadow-sm">
+                        <div key={payment._id} className="rounded-3xl border border-slate-200 p-5 bg-white shadow-sm">
                           <div className="flex items-start justify-between gap-3">
                             <div>
-                              <div className="font-black text-slate-900">{p.description}</div>
+                              <div className="font-black text-slate-900">{payment.description}</div>
                               <div className="text-sm text-slate-600 mt-1">
-                                {scope} • {Number(p.amount).toFixed(2)} €
+                                {paymentScopeLabel(payment)} • {amountNum.toFixed(2)} €
                               </div>
                               <div className="text-xs text-slate-500 mt-2">
-                                Период: {fmtDate(p.dateFrom)} → {fmtDate(p.dateTo)}
+                                Период: {fmtDate(payment.dateFrom)} → {fmtDate(payment.dateTo)}
                               </div>
 
-                              {isManager && (
+                              {isManager ? (
                                 <div className="text-xs text-slate-500 mt-2">
-                                  Събрано: <b>{Number(collected).toFixed(2)} €</b>
+                                  Платени апартаменти: <b>{paidUnits}</b> • Събрано: <b>{collected.toFixed(2)} €</b>
+                                </div>
+                              ) : (
+                                <div className="text-xs text-slate-500 mt-2">
+                                  Твоите апартаменти: <b>{formatApartmentList(meta?.owedApartments || [])}</b>
                                 </div>
                               )}
                             </div>
@@ -451,48 +470,59 @@ export default function Payments() {
                               <div className="text-right">
                                 <div
                                   className={`inline-flex text-xs px-2.5 py-1 rounded-full border ${
-                                    myPaid
+                                    state === "paid"
                                       ? "bg-emerald-50 text-emerald-900 border-emerald-200"
-                                      : "bg-amber-50 text-amber-900 border-amber-200"
+                                      : state === "partial"
+                                      ? "bg-amber-50 text-amber-900 border-amber-200"
+                                      : "bg-rose-50 text-rose-900 border-rose-200"
                                   }`}
                                 >
-                                  {myPaid ? "Платено" : "Неплатено"}
+                                  {state === "paid" ? "Платено" : state === "partial" ? "Частично платено" : "Неплатено"}
                                 </div>
-
-                                {myPaid && (
-                                  <div className="mt-1 text-[11px] text-slate-500">
-                                    {myPaid.method === "stripe" ? "Платено чрез Stripe" : "Платено"} •{" "}
-                                    {fmtDateTime(myPaid.paidAt)}
-                                  </div>
-                                )}
                               </div>
                             )}
                           </div>
 
-                          {/* Resident actions */}
-                          {!isManager && !myPaid && (
-                            <div className="mt-4 flex flex-wrap gap-2">
-                              <button
-                                onClick={() => payWithStripe(p._id)}
-                                className="rounded-2xl px-4 py-2.5 text-xs font-semibold bg-slate-900 text-white hover:bg-slate-800 transition shadow-sm"
-                              >
-                                Плати със Stripe
-                              </button>
+                          {meta?.owedApartments?.length > 0 && (
+                            <div className="mt-4 space-y-2 text-sm text-slate-700">
+                              <div>
+                                {isManager ? "Моите апартаменти" : "Твоите апартаменти"}:{" "}
+                                <b>{formatApartmentList(meta.owedApartments)}</b>
+                              </div>
+                              {meta.paidApartments.length > 0 && (
+                                <div>
+                                  Платени апартаменти: <b>{formatApartmentList(meta.paidApartments)}</b>
+                                </div>
+                              )}
+                              {meta.outstandingApartments.length > 0 && (
+                                <div>
+                                  Оставащи апартаменти: <b>{formatApartmentList(meta.outstandingApartments)}</b> •{" "}
+                                  <b>{(meta.outstandingApartments.length * amountNum).toFixed(2)} €</b>
+                                </div>
+                              )}
+
+                              {meta.outstandingApartments.length > 0 && (
+                                <button
+                                  onClick={() => payWithStripe(payment._id)}
+                                  className="rounded-2xl px-4 py-2.5 text-xs font-semibold bg-slate-900 text-white hover:bg-slate-800 transition shadow-sm"
+                                >
+                                  Плати със Stripe
+                                </button>
+                              )}
                             </div>
                           )}
 
-                          {/* Manager details */}
                           {isManager && (
                             <div className="mt-4">
-                              <div className="text-xs text-slate-500">Платили: {(p.paidBy || []).length}</div>
+                              <div className="text-xs text-slate-500">Записи в плащанията: {(payment.paidBy || []).length}</div>
 
-                              {(p.paidBy || []).length > 0 && (
+                              {(payment.paidBy || []).length > 0 && (
                                 <div className="mt-3 rounded-2xl border border-slate-200 overflow-hidden">
-                                  {(p.paidBy || []).map((x, idx) => {
-                                    const u = x.user || null;
+                                  {(payment.paidBy || []).map((entry, idx) => {
+                                    const paidApartments = getPaidEntryApartments(entry);
+                                    const u = entry.user || null;
                                     const name = u?.name || "—";
-                                    const apt = u?.apartment || "—";
-                                    const methodLabel = x.method === "stripe" ? "Stripe" : x.method || "—";
+                                    const methodLabel = entry.method === "stripe" ? "Stripe" : entry.method || "—";
 
                                     return (
                                       <div
@@ -502,10 +532,10 @@ export default function Payments() {
                                         <div className="min-w-0">
                                           <div className="font-semibold text-slate-900 truncate">{name}</div>
                                           <div className="text-xs text-slate-500">
-                                            Апартамент: <b>{apt}</b> • Метод: <b>{methodLabel}</b>
+                                            Апартаменти: <b>{formatApartmentList(paidApartments)}</b> • Метод: <b>{methodLabel}</b>
                                           </div>
                                         </div>
-                                        <div className="shrink-0 text-xs text-slate-500">{fmtDateTime(x.paidAt)}</div>
+                                        <div className="shrink-0 text-xs text-slate-500">{fmtDateTime(entry.paidAt)}</div>
                                       </div>
                                     );
                                   })}
@@ -535,42 +565,30 @@ export default function Payments() {
               </div>
             </div>
 
-            {/* ASIDE HELP */}
             <div className="space-y-4">
-              <HelpCard title="Плащане през Stripe">
+              <HelpCard title="Как работи плащането">
                 <ul className="list-disc pl-5 mt-2 space-y-2">
-                  <li>Натискаш “Плати със Stripe” и се отваря Stripe Checkout.</li>
-                  <li>Плащаш с карта като гост (няма акаунт).</li>
-                  <li>След успех системата отбелязва плащането чрез webhook.</li>
+                  <li>Ако имаш повече от един апартамент, системата смята колко апартамента още не са платени.</li>
+                  <li>При Stripe плащаш само за оставащите апартаменти по това начисление.</li>
+                  <li>След успех системата записва точно кои апартаменти са покрити.</li>
                 </ul>
               </HelpCard>
 
-              <HelpCard title="Политика за начисления">
+              <HelpCard title="Обхват на начисление">
                 <div className="text-sm text-slate-700 space-y-2">
-                  <div>Начисление за конкретен апартамент се вижда само от този апартамент.</div>
-                  <div>Начисление “за всички” се вижда от всички апартаменти в стаята.</div>
-                  <div>Ако има период, добра практика е да се попълва, за да е ясно какво покрива сумата.</div>
+                  <div>Общо начисление важи за всички апартаменти във входа.</div>
+                  <div>Специфично начисление може да е за един или няколко апартамента.</div>
+                  <div>Ако профилът ти има няколко апартамента, ще виждаш остатъка по всеки от тях.</div>
                 </div>
               </HelpCard>
 
               <HelpCard title="Ако не се зарежда">
-                Ако получиш съобщение, че входът не е активен — trial/абонаментът е изтекъл. Проверяваш статуса в{" "}
-                <b>Стая</b> или <b>Табло</b>.
+                Ако получиш съобщение, че входът не е активен, провери trial/абонамента в <b>Стая</b> или <b>Табло</b>.
               </HelpCard>
-
-              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="text-sm font-semibold text-slate-900">Бележка</div>
-                <div className="mt-2 text-sm text-slate-600 leading-relaxed">
-                  При успешно плащане страницата може да покаже съобщение и да презареди данните автоматично. Ако не видиш промяна,
-                  натисни “Обнови” или презареди страницата.
-                </div>
-              </div>
             </div>
           </div>
         </div>
       </div>
-
-      
     </div>
   );
 }

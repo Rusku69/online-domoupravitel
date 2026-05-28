@@ -81,7 +81,7 @@ export const useAuth = create((set, get) => ({
       const u = res.data;
 
       set({ user: { ...u, id: u._id } });
-    } catch (err) {
+    } catch {
       console.error("❌ Грешка при презареждане на потребителя");
     }
   },

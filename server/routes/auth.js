@@ -146,7 +146,7 @@ router.post("/register", async (req, res) => {
 
     const token = signToken(user);
     return res.status(201).json({
-      message: "✅ Регистрация успешна. Потвърди имейла, за да можеш да влизаш в стая/да подаваш заявка за домоуправител.",
+      message: "✅ Регистрация успешна. Потвърди имейла, ако искаш да подаваш заявка за домоуправител.",
       token,
       user: user.toJSON(),
     });

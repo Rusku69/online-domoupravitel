@@ -3,6 +3,12 @@ import api from "../lib/api";
 import { useAuth } from "../store/auth";
 import { PageHeader, HelpCard, ErrorBox, SuccessBox } from "../components/PageBits";
 import SiteFooter from "../components/SiteFooter";
+import {
+  apartmentSort,
+  formatApartmentList,
+  getMemberApartments,
+  getUserApartments,
+} from "../lib/apartments";
 
 function fmtDate(d) {
   if (!d) return "—";
@@ -94,10 +100,10 @@ export default function AdminRooms() {
     return [...members].sort((a, b) => {
       if (a.isRoomManager && !b.isRoomManager) return -1;
       if (!a.isRoomManager && b.isRoomManager) return 1;
-      return String(a.apartment || "").localeCompare(String(b.apartment || ""), "bg", {
-        numeric: true,
-        sensitivity: "base",
-      });
+
+      const aFirst = getMemberApartments(a)[0] || "";
+      const bFirst = getMemberApartments(b)[0] || "";
+      return apartmentSort(aFirst, bFirst);
     });
   };
 
@@ -118,6 +124,10 @@ export default function AdminRooms() {
       email: m?.email || m?.user?.email || "—",
       phone: m?.phone || m?.phoneSnapshot || m?.user?.phone || "",
       apartment: m?.apartment || m?.user?.apartment || "",
+      apartments: getMemberApartments(m).length ? getMemberApartments(m) : getUserApartments(m?.user),
+      apartmentLabel:
+        m?.apartmentLabel ||
+        formatApartmentList(getMemberApartments(m).length ? getMemberApartments(m) : getUserApartments(m?.user)),
       role: m?.role || m?.user?.role || (m?.isRoomManager ? "manager" : "resident"),
       memberStatus: m?.memberStatus || m?.status || m?.user?.memberStatus || "pending",
       isRoomManager: !!m?.isRoomManager,
@@ -179,6 +189,10 @@ export default function AdminRooms() {
           email: memberUser?.email || (isRoomManager ? createdBy?.email || "—" : "—"),
           phone: m?.phoneSnapshot || memberUser?.phone || (isRoomManager ? createdBy?.phone || "" : ""),
           apartment: m?.apartment || memberUser?.apartment || "",
+          apartments: getMemberApartments(m).length ? getMemberApartments(m) : getUserApartments(memberUser),
+          apartmentLabel: formatApartmentList(
+            getMemberApartments(m).length ? getMemberApartments(m) : getUserApartments(memberUser)
+          ),
           role: memberUser?.role || (isRoomManager ? "manager" : "resident"),
           memberStatus: m?.status || memberUser?.memberStatus || "pending",
           isRoomManager,
@@ -186,12 +200,15 @@ export default function AdminRooms() {
       });
 
       if (managerId && !members.some((x) => String(x._id || "") === managerId)) {
+        const managerApartments = getUserApartments(createdBy);
         members.unshift({
           _id: managerId,
           name: createdBy?.name || "—",
           email: createdBy?.email || "—",
           phone: createdBy?.phone || "",
           apartment: createdBy?.apartment || "",
+          apartments: managerApartments,
+          apartmentLabel: formatApartmentList(managerApartments),
           role: "manager",
           memberStatus: "approved",
           isRoomManager: true,
@@ -567,14 +584,14 @@ export default function AdminRooms() {
                                     <div className="mt-3 space-y-2">
                                       {visibleMembers.map((m) => (
                                         <div
-                                          key={`${r._id}-${m._id || m.email}-${m.apartment || "na"}`}
+                                          key={`${r._id}-${m._id || m.email}-${m.apartmentLabel || "na"}`}
                                           className="rounded-2xl border border-slate-200 px-3 py-2 bg-slate-50"
                                         >
                                           <div className="flex flex-wrap items-center justify-between gap-2">
                                             <div className="text-sm text-slate-800">
                                               <b className="text-slate-900">{m.name || "—"}</b>
                                               {m.email ? ` • ${m.email}` : ""}
-                                              {m.apartment ? ` • ап. ${m.apartment}` : ""}
+                                              {m.apartmentLabel ? ` • ап. ${m.apartmentLabel}` : ""}
                                             </div>
                                             <div className="flex flex-wrap gap-1.5">
                                               <Pill tone={m.isRoomManager ? "sky" : "gray"}>

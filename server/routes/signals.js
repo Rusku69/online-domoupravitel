@@ -2,26 +2,22 @@ import express from "express";
 import Signal from "../models/Signal.js";
 import requireAuth from "../middleware/requireAuth.js";
 import requireRoomActive from "../middleware/requireRoomActive.js";
+import { getUserApartments } from "../src/utils/apartments.js";
 
 const router = express.Router();
 
-// ✅ GET сигнали за стаята
-// - manager: вижда всичко
-// - resident: вижда само собствените (анонимност)
 router.get("/", requireAuth, requireRoomActive, async (req, res) => {
   try {
     const isManager = req.user.role === "manager";
-
     const filter = { roomId: req.user.roomId };
 
     if (!isManager) {
-      // ✅ CHANGED: resident вижда само своите сигнали
       filter.createdBy = req.user._id;
     }
 
     const signals = await Signal.find(filter)
       .sort({ createdAt: -1 })
-      .populate("createdBy", "name email apartment entrance");
+      .populate("createdBy", "name email apartment apartments entrance");
 
     res.json(signals);
   } catch (err) {
@@ -29,39 +25,38 @@ router.get("/", requireAuth, requireRoomActive, async (req, res) => {
   }
 });
 
-// ✅ POST нов сигнал
-// - resident подава сигнал, който по подразбиране е private (анонимност)
 router.post("/", requireAuth, requireRoomActive, async (req, res) => {
   try {
     const { title, description, floor, apartment } = req.body;
     if (!title || !description) return res.status(400).json({ message: "Липсват данни" });
 
-    // ✅ CHANGED: винаги private (не позволяваме public/room видимост)
-    const vis = "private";
+    const ownedApartments = getUserApartments(req.user);
+    const selectedApartment = String(apartment || "").trim();
+    const fallbackApartment = ownedApartments[0] || String(req.user.apartment || "").trim();
+    const apartmentForSignal = selectedApartment || fallbackApartment;
+
+    if (selectedApartment && ownedApartments.length && !ownedApartments.includes(selectedApartment)) {
+      return res.status(400).json({ message: "Можеш да подадеш сигнал само за свой апартамент." });
+    }
 
     const signal = await Signal.create({
       roomId: req.user.roomId,
       building: req.user.building || "",
-      // махаме entrance – вече е фиксирано от room/user
       entrance: (req.user.entrance || "").trim().toUpperCase(),
-
-      // ✅ вместо вход => етаж
       floor: String(floor || "").trim(),
-      apartment: (apartment || req.user.apartment || "").trim(),
-
+      apartment: apartmentForSignal,
       title: String(title).trim(),
       description: String(description).trim(),
-      visibility: vis,
+      visibility: "private",
       createdBy: req.user._id,
     });
 
     res.status(201).json({ message: "Сигналът е изпратен!", signal });
   } catch (err) {
-    res.status(500).json({ message: "Грешка при създаване на сигнал", error: err.message });
+    res.status(500).json({ message: "Грешка при създаване на сигнала", error: err.message });
   }
 });
 
-// ✅ PUT статус (само manager) + може да сменя visibility ако искаш
 router.put("/:id", requireAuth, requireRoomActive, async (req, res) => {
   try {
     if (req.user.role !== "manager") return res.status(403).json({ message: "Нямате права" });

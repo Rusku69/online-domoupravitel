@@ -3,6 +3,7 @@ import api from "../lib/api";
 import { useAuth } from "../store/auth";
 import { PageHeader, HelpCard, ErrorBox, SuccessBox } from "../components/PageBits";
 import SiteFooter from "../components/SiteFooter";
+import { formatApartmentList } from "../lib/apartments";
 
 function Pill({ children, tone = "gray" }) {
   const map = {
@@ -66,7 +67,7 @@ export default function Residents() {
     return members.filter((m) => {
       const name = (m.name || "").toLowerCase();
       const email = (m.email || "").toLowerCase();
-      const apt = String(m.apartment || "").toLowerCase();
+      const apt = String(m.apartmentLabel || formatApartmentList(m.apartments || m.apartment)).toLowerCase();
       return name.includes(s) || email.includes(s) || apt.includes(s);
     });
   }, [members, q]);
@@ -165,7 +166,7 @@ export default function Residents() {
 
                   <div className="min-w-[260px]">
                     <label className="block text-xs font-semibold text-slate-600 mb-1">
-                      Търсене (име, имейл, апартамент)
+                      Търсене (име, имейл, апартамент/и)
                     </label>
                     <input
                       className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
@@ -215,7 +216,7 @@ export default function Residents() {
                             </div>
 
                             <div className="text-xs text-slate-500 mt-2">
-                              Апартамент: <b>{m.apartment || "—"}</b>
+                              Апартаменти: <b>{m.apartmentLabel || formatApartmentList(m.apartments || m.apartment)}</b>
                             </div>
                           </div>
 
@@ -272,7 +273,7 @@ export default function Residents() {
                             </div>
 
                             <div className="text-xs text-slate-500 mt-2">
-                              Апартамент: <b>{m.apartment || "—"}</b>
+                              Апартаменти: <b>{m.apartmentLabel || formatApartmentList(m.apartments || m.apartment)}</b>
                             </div>
                           </div>
 

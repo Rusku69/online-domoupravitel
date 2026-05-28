@@ -44,7 +44,7 @@ export default function Navbar() {
   const approved = user?.memberStatus === "approved";
   const isAdmin = user?.role === "admin";
   const isManager = user?.role === "manager";
-  const isResident = user?.role === "resident";
+  const pendingRoomApproval = !!user && hasRoom && !approved && !isAdmin;
 
   const closeAll = () => {
     setMobileOpen(false);
@@ -54,14 +54,13 @@ export default function Navbar() {
   const links = useMemo(() => {
     const out = [];
 
-    // ✅ always when logged in
     out.push({ to: "/room", label: "Стая", show: !!user });
     out.push({
       to: "/dashboard",
       label: "Табло",
-      show: !!user && !isAdmin && (!isResident || hasRoom),
+      show: !!user && !isAdmin && hasRoom && approved,
     });
-    out.push({ to: "/account", label: "Акаунт", show: !!user });
+    out.push({ to: "/account", label: "Акаунт", show: !!user && !pendingRoomApproval });
 
     // approved sections (still only when hasRoom+approved)
     out.push({ to: "/announcements", label: "Обяви", show: !!user && !isAdmin && hasRoom && approved });
@@ -77,7 +76,7 @@ export default function Navbar() {
     out.push({ to: "/admin/rooms", label: "Входове", show: !!user && isAdmin });
 
     return out.filter((x) => x.show);
-  }, [user, hasRoom, approved, isManager, isAdmin, isResident]);
+  }, [user, hasRoom, approved, isManager, isAdmin, pendingRoomApproval]);
 
   const primary = links.slice(0, 5);
   const secondary = links.slice(5);
@@ -94,7 +93,7 @@ export default function Navbar() {
           <div className="leading-tight min-w-0">
             <div className="font-semibold text-slate-900">Онлайн Домоуправител</div>
             <div className="text-xs text-slate-500">
-              {user ? `${user.name} • ${roleLabel(user.role)}` : "Вход • Регистрация"}
+              {user ? `${user.name} • ${roleLabel(user.role, user)}` : "Вход • Регистрация"}
             </div>
           </div>
         </Link>
@@ -236,6 +235,4 @@ export default function Navbar() {
     </header>
   );
 }
-
-
 

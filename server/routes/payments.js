@@ -3,59 +3,85 @@ import Stripe from "stripe";
 import Payment from "../models/Payment.js";
 import requireAuth from "../middleware/requireAuth.js";
 import requireRoomActive from "../middleware/requireRoomActive.js";
+import {
+  getPaidApartmentsForUser,
+  getPaymentTargetApartments,
+  getUserApartments,
+  normalizeApartmentList,
+} from "../src/utils/apartments.js";
 
 const router = express.Router();
 
 const APP_URL = process.env.APP_URL || "http://localhost:5173";
-
-// ✅ Валутата за Stripe Checkout (BGN вече не се приема)
 const STRIPE_CURRENCY = "eur";
 
-// ✅ Lazy Stripe
 function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY || "";
   if (!key) return null;
   return new Stripe(key, { apiVersion: "2024-06-20" });
 }
 
+function applyCommonFilters(filter, query) {
+  const { status, q, from, to } = query;
+
+  if (status) filter.status = status;
+  if (q) filter.description = { $regex: q, $options: "i" };
+
+  if (from || to) {
+    filter.createdAt = {};
+    if (from) filter.createdAt.$gte = new Date(from);
+    if (to) {
+      const end = new Date(to);
+      end.setHours(23, 59, 59, 999);
+      filter.createdAt.$lte = end;
+    }
+  }
+
+  return filter;
+}
+
+function getOwedApartments(payment, user) {
+  const ownedApartments = getUserApartments(user);
+  const targetApartments = getPaymentTargetApartments(payment);
+
+  if (!ownedApartments.length) return [];
+  if (!targetApartments.length) return ownedApartments;
+
+  return ownedApartments.filter((apt) => targetApartments.includes(apt));
+}
+
 router.get("/", requireAuth, requireRoomActive, async (req, res) => {
   try {
-    const { apartment, status, q, from, to } = req.query;
-
-    const filter = { roomId: req.user.roomId };
+    const { apartment } = req.query;
+    const filter = applyCommonFilters({ roomId: req.user.roomId }, req.query);
 
     if (req.user.role === "manager") {
-      if (apartment) filter.apartment = String(apartment).trim();
-      if (status) filter.status = status;
-      if (q) filter.description = { $regex: q, $options: "i" };
+      const payments = await Payment.find(filter)
+        .sort({ dateFrom: -1, createdAt: -1 })
+        .populate("createdBy", "name email role apartment apartments")
+        .populate("paidBy.user", "name email apartment apartments");
 
-      if (from || to) {
-        filter.createdAt = {};
-        if (from) filter.createdAt.$gte = new Date(from);
-        if (to) {
-          const end = new Date(to);
-          end.setHours(23, 59, 59, 999);
-          filter.createdAt.$lte = end;
-        }
-      }
+      const targetApartment = String(apartment || "").trim();
+      const scoped = targetApartment
+        ? payments.filter((payment) => getPaymentTargetApartments(payment).includes(targetApartment))
+        : payments;
+
+      return res.json(scoped);
     }
 
-    if (req.user.role === "resident") {
-      const a = String(req.user.apartment || "").trim();
-      filter.$or = [{ apartment: "" }, { apartment: a }];
+    const ownedApartments = getUserApartments(req.user);
+    if (!ownedApartments.length) return res.json([]);
 
-      if (status) filter.status = status;
-      if (q) filter.description = { $regex: q, $options: "i" };
-    }
+    filter.$or = [{ apartment: "" }, { apartment: { $in: ownedApartments } }, { apartments: { $in: ownedApartments } }];
 
     const payments = await Payment.find(filter)
       .sort({ dateFrom: -1, createdAt: -1 })
-      .populate("createdBy", "name email role apartment")
-      .populate("paidBy.user", "name email apartment");
+      .populate("createdBy", "name email role apartment apartments")
+      .populate("paidBy.user", "name email apartment apartments");
 
     res.json(payments);
   } catch (err) {
-    console.error("❌ payments GET error:", err);
+    console.error("payments GET error:", err);
     res.status(500).json({
       message: "Грешка при зареждане на плащания",
       error: err.message,
@@ -66,39 +92,32 @@ router.get("/", requireAuth, requireRoomActive, async (req, res) => {
 router.post("/create", requireAuth, requireRoomActive, async (req, res) => {
   try {
     if (req.user.role !== "manager") {
-      return res
-        .status(403)
-        .json({ message: "Само домоуправител може да създава плащания" });
+      return res.status(403).json({ message: "Само домоуправител може да създава плащания" });
     }
 
-    let { description, amount, dateFrom, dateTo, apartment } = req.body;
+    let { description, amount, dateFrom, dateTo } = req.body;
 
     description = description ? String(description).trim() : "";
     const amountNum = Number(amount);
+    const targetApartments = normalizeApartmentList(req.body.apartments ?? req.body.apartment);
 
     if (!description || Number.isNaN(amountNum) || amountNum <= 0) {
-      return res
-        .status(400)
-        .json({ message: "Въведете валидно описание и сума." });
+      return res.status(400).json({ message: "Въведете валидно описание и сума." });
     }
 
     const fixedEntrance = String(req.user.entrance || "").trim().toUpperCase();
-    const apt = String(apartment || "").trim();
 
     const payment = await Payment.create({
       roomId: req.user.roomId,
       createdBy: req.user._id,
-
       description,
-      amount: amountNum, // ✅ EUR
-
+      amount: amountNum,
       building: req.user.building || "",
       entrance: fixedEntrance,
-      apartment: apt,
-
+      apartment: targetApartments[0] || "",
+      apartments: targetApartments,
       dateFrom: dateFrom ? new Date(dateFrom) : null,
       dateTo: dateTo ? new Date(dateTo) : null,
-
       status: "unpaid",
       paidAt: null,
       paidBy: [],
@@ -109,10 +128,8 @@ router.post("/create", requireAuth, requireRoomActive, async (req, res) => {
       payment,
     });
   } catch (err) {
-    console.error("❌ payments CREATE error:", err);
-    return res
-      .status(500)
-      .json({ message: "Грешка при създаване", error: err.message });
+    console.error("payments CREATE error:", err);
+    return res.status(500).json({ message: "Грешка при създаване", error: err.message });
   }
 });
 
@@ -120,39 +137,28 @@ router.post("/:id/checkout", requireAuth, requireRoomActive, async (req, res) =>
   try {
     const stripe = getStripe();
     if (!stripe) {
-      return res
-        .status(500)
-        .json({ message: "Stripe не е конфигуриран (липсва STRIPE_SECRET_KEY)." });
+      return res.status(500).json({ message: "Stripe не е конфигуриран (липсва STRIPE_SECRET_KEY)." });
     }
 
-    if (req.user.role !== "resident") {
-      return res.status(403).json({ message: "Само живущ може да плаща" });
+    if (!["resident", "manager"].includes(String(req.user.role || ""))) {
+      return res
+        .status(403)
+        .json({ message: "Само живущ или домоуправител със собствен апартамент може да плаща" });
     }
 
     const payment = await Payment.findOne({
       _id: req.params.id,
       roomId: req.user.roomId,
     });
-    if (!payment)
+    if (!payment) {
       return res.status(404).json({ message: "Начислението не е намерено" });
-
-    if (payment.apartment) {
-      const userApt = String(req.user.apartment || "").trim();
-      if (String(payment.apartment).trim() !== userApt) {
-        return res
-          .status(403)
-          .json({ message: "Това начисление е за друг апартамент." });
-      }
     }
 
-    // ✅ CHANGED: safer check (ако някога user е ObjectId или populate-нат обект)
-    const alreadyPaid = (payment.paidBy || []).some((x) => {
-      const uid = x?.user?._id || x?.user;
-      return String(uid) === String(req.user._id);
-    });
+    const paidApartments = new Set(getPaidApartmentsForUser(payment, req.user));
+    const outstandingApartments = getOwedApartments(payment, req.user).filter((apt) => !paidApartments.has(apt));
 
-    if (alreadyPaid) {
-      return res.status(400).json({ message: "Вече сте платили това начисление." });
+    if (!outstandingApartments.length) {
+      return res.status(400).json({ message: "Нямате неплатени апартаменти по това начисление." });
     }
 
     const amount = Number(payment.amount);
@@ -161,21 +167,23 @@ router.post("/:id/checkout", requireAuth, requireRoomActive, async (req, res) =>
     }
 
     const unitAmount = Math.round(amount * 100);
+    const scopeLabel =
+      outstandingApartments.length === 1
+        ? `Начисление за ап. ${outstandingApartments[0]}`
+        : `Начисление за ап. ${outstandingApartments.join(", ")}`;
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
       line_items: [
         {
-          quantity: 1,
+          quantity: outstandingApartments.length,
           price_data: {
             currency: STRIPE_CURRENCY,
             unit_amount: unitAmount,
             product_data: {
               name: payment.description || "Плащане",
-              description: payment.apartment
-                ? `Начисление за ап. ${payment.apartment}`
-                : "Начисление за всички апартаменти",
+              description: scopeLabel,
             },
           },
         },
@@ -186,14 +194,16 @@ router.post("/:id/checkout", requireAuth, requireRoomActive, async (req, res) =>
         paymentId: String(payment._id),
         roomId: String(payment.roomId),
         userId: String(req.user._id),
-        apartment: String(req.user.apartment || ""),
+        apartment: outstandingApartments[0] || "",
+        apartments: outstandingApartments.join(","),
+        units: String(outstandingApartments.length),
       },
       customer_email: req.user.email || undefined,
     });
 
     res.json({ url: session.url });
   } catch (err) {
-    console.error("❌ checkout error:", {
+    console.error("checkout error:", {
       message: err?.message,
       type: err?.type,
       code: err?.code,

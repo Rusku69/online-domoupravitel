@@ -3,6 +3,7 @@ import api from "../lib/api";
 import { useAuth } from "../store/auth";
 import { PageHeader, HelpCard, ErrorBox, SuccessBox } from "../components/PageBits";
 import SiteFooter from "../components/SiteFooter";
+import { formatApartmentList, normalizeApartmentList } from "../lib/apartments";
 
 function Pill({ children, tone = "gray" }) {
   const map = {
@@ -82,7 +83,11 @@ export default function Admin() {
       const city = String(u.managerRequestCity || "").toLowerCase();
       const building = String(u.managerRequestBuilding || "").toLowerCase();
       const entrance = String(u.managerRequestEntrance || "").toLowerCase();
-      const apt = String(u.managerRequestApartment || "").toLowerCase();
+      const apt = formatApartmentList(
+        normalizeApartmentList(u.managerRequestApartments).length
+          ? u.managerRequestApartments
+          : u.managerRequestApartment
+      ).toLowerCase();
 
       return (
         name.includes(s) ||
@@ -149,11 +154,11 @@ export default function Admin() {
             <div className="lg:col-span-2 space-y-4">
               <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div className="font-black text-slate-900">Заявки за домоуправител</div>
-                    <div className="text-sm text-slate-600 mt-1">
-                      Виждаш: име, телефон, имейл, град/блок/вход и апартамент (заявка).
-                    </div>
+                    <div>
+                      <div className="font-black text-slate-900">Заявки за домоуправител</div>
+                      <div className="text-sm text-slate-600 mt-1">
+                        Виждаш: име, телефон, имейл, град/блок/вход и заявените апартаменти.
+                      </div>
                   </div>
 
                   <div className="min-w-[260px]">
@@ -162,7 +167,7 @@ export default function Admin() {
                       className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
                       value={q}
                       onChange={(e) => setQ(e.target.value)}
-                      placeholder="име, имейл, телефон, град, блок, вход..."
+                      placeholder="име, имейл, телефон, град, блок, вход, апартамент..."
                     />
                   </div>
                 </div>
@@ -200,8 +205,22 @@ export default function Admin() {
                           </div>
 
                           <div className="text-sm text-slate-700 mt-3">
-                            {u.managerRequestCity || "—"} • Блок {u.managerRequestBuilding || "—"} • Вход{" "}
-                            {u.managerRequestEntrance || "—"} • Ап. {u.managerRequestApartment || "—"}
+                            {(() => {
+                              const apartmentLabel =
+                                u.managerRequestApartmentLabel ||
+                                formatApartmentList(
+                                  normalizeApartmentList(u.managerRequestApartments).length
+                                    ? u.managerRequestApartments
+                                    : u.managerRequestApartment
+                                );
+
+                              return (
+                                <>
+                                  {u.managerRequestCity || "—"} • Блок {u.managerRequestBuilding || "—"} • Вход{" "}
+                                  {u.managerRequestEntrance || "—"} • Ап. {apartmentLabel || "—"}
+                                </>
+                              );
+                            })()}
                           </div>
 
                           <div className="text-xs text-slate-500 mt-2">

@@ -7,7 +7,7 @@ const userSchema = new mongoose.Schema(
 
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     emailVerified: { type: Boolean, default: false },
-    // За нови акаунти: join/manager-request се разрешават само след verify email.
+    // За нови акаунти: manager request и manager access се разрешават само след verify email.
     // Старите акаунти остават без промяна (false/missing).
     mustVerifyEmailForRoomActions: { type: Boolean, default: false },
 
@@ -26,6 +26,7 @@ const userSchema = new mongoose.Schema(
     building: { type: String, default: "" },
     entrance: { type: String, default: "" },
     apartment: { type: String, default: "" },
+    apartments: { type: [String], default: [] },
 
     managerRequestStatus: {
       type: String,
@@ -36,6 +37,7 @@ const userSchema = new mongoose.Schema(
     managerRequestBuilding: { type: String, default: "" },
     managerRequestEntrance: { type: String, default: "" },
     managerRequestApartment: { type: String, default: "" },
+    managerRequestApartments: { type: [String], default: [] },
     managerRequestedAt: { type: Date, default: null },
 
     // Email verification token (HASH)

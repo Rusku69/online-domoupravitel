@@ -4,6 +4,7 @@ import { useAuth } from "../store/auth";
 import { PageHeader, HelpCard, ErrorBox, SuccessBox } from "../components/PageBits";
 import SiteFooter from "../components/SiteFooter";
 import { roleLabel } from "../lib/roles";
+import { formatApartmentList, getUserApartments } from "../lib/apartments";
 
 export default function Account() {
   const { user, fetchUser } = useAuth();
@@ -89,6 +90,7 @@ export default function Account() {
   if (!user) return null;
 
   const emailVerified = !!user.emailVerified;
+  const apartmentLabel = formatApartmentList(getUserApartments(user));
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
@@ -100,7 +102,7 @@ export default function Account() {
               <>
                 Тук виждаш профила си и можеш да коригираш име и телефон.
                 <br />
-                Входът и апартаментът се определят от процеса за присъединяване към стая.
+                Входът и апартаментите се определят от процеса за присъединяване към стая.
               </>
             }
           />
@@ -130,7 +132,7 @@ export default function Account() {
 
                   <div className="font-semibold mt-4">Какво не се променя от тази страница</div>
                   <ul className="mt-2 list-disc pl-5 space-y-1">
-                    <li>Град, блок, вход и апартамент (идват от стаята и членството).</li>
+                    <li>Град, блок, вход и апартаменти (идват от стаята и членството).</li>
                     <li>Роля и статус на членство (управляват се от домоуправител/Админ процеса).</li>
                   </ul>
                 </div>
@@ -287,13 +289,13 @@ export default function Account() {
                   <br />
                   Вход: <b>{user.entrance || "—"}</b>
                   <br />
-                  Апартамент: <b>{user.apartment || "—"}</b>
+                  Апартаменти: <b>{apartmentLabel}</b>
                 </div>
               </HelpCard>
 
               <HelpCard title="Роля и достъп">
                 <div className="text-sm text-slate-700 mt-2">
-                  Роля: <b>{roleLabel(user.role)}</b>
+                  Роля: <b>{roleLabel(user.role, user)}</b>
                   <br />
                   Статус: <b>{user.memberStatus || "—"}</b>
                   <br />

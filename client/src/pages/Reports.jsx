@@ -19,7 +19,10 @@ export default function Reports() {
 
   // Баланс
   const [initialAmount, setInitialAmount] = useState("");
+  const [openingBalance, setOpeningBalance] = useState(0);
   const [balance, setBalance] = useState(0);
+  const [collectedTotal, setCollectedTotal] = useState(0);
+  const [paidUnits, setPaidUnits] = useState(0);
 
   // Разходи
   const [expenses, setExpenses] = useState([]);
@@ -67,7 +70,10 @@ export default function Reports() {
         const data = res.data || {};
         setRecipientName(data.holderName || "");
         setIban(data.iban || "");
+        setOpeningBalance(Number(data.openingBalance || 0));
         setBalance(Number(data.balance || 0));
+        setCollectedTotal(Number(data.collectedTotal || 0));
+        setPaidUnits(Number(data.paidUnits || 0));
         setExpenses(Array.isArray(data.expenses) ? data.expenses : []);
         setLocked(!!data.locked);
       })
@@ -114,7 +120,10 @@ export default function Reports() {
       setLocked(true);
       setRecipientName(data.holderName || recipientName);
       setIban(data.iban || iban);
+      setOpeningBalance(Number(data.openingBalance || start));
       setBalance(Number(data.balance || 0));
+      setCollectedTotal(Number(data.collectedTotal || 0));
+      setPaidUnits(Number(data.paidUnits || 0));
       setExpenses(Array.isArray(data.expenses) ? data.expenses : []);
       setInitialAmount("");
       setSuccess("Данните са записани и заключени успешно.");
@@ -143,7 +152,10 @@ export default function Reports() {
       });
 
       const data = res.data || {};
+      setOpeningBalance(Number(data.openingBalance || openingBalance));
       setBalance(Number(data.balance || 0));
+      setCollectedTotal(Number(data.collectedTotal || 0));
+      setPaidUnits(Number(data.paidUnits || 0));
       setExpenses(Array.isArray(data.expenses) ? data.expenses : []);
       setExpenseAmount("");
       setExpenseNote("");
@@ -293,20 +305,28 @@ export default function Reports() {
               Тази секция е бърз преглед на текущото финансово състояние. Данните са предназначени за вътрешен отчет на входа.
             </p>
 
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3 text-sm">
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-5 gap-3 text-sm">
               <div className="rounded-2xl border border-slate-200 p-4">
-                <div className="text-xs font-semibold text-slate-600">Текущ баланс</div>
-                <div className="mt-1 text-2xl font-black text-slate-900">{fmtMoney(balance)}</div>
+                <div className="text-xs font-semibold text-slate-600">Начален баланс</div>
+                <div className="mt-1 text-2xl font-black text-slate-900">{fmtMoney(openingBalance)}</div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 p-4">
+                <div className="text-xs font-semibold text-slate-600">Събрани плащания</div>
+                <div className="mt-1 text-2xl font-black text-emerald-700">{fmtMoney(collectedTotal)}</div>
+                <div className="text-xs text-slate-500 mt-1">Платени апартаменти: {paidUnits}</div>
               </div>
 
               <div className="rounded-2xl border border-slate-200 p-4">
                 <div className="text-xs font-semibold text-slate-600">Общо разходи</div>
-                <div className="mt-1 text-2xl font-black text-slate-900">{fmtMoney(expensesTotal)}</div>
+                <div className="mt-1 text-2xl font-black text-rose-700">{fmtMoney(expensesTotal)}</div>
+                <div className="text-xs text-slate-500 mt-1">Брой разходи: {expensesCount}</div>
               </div>
 
               <div className="rounded-2xl border border-slate-200 p-4">
-                <div className="text-xs font-semibold text-slate-600">Брой разходи</div>
-                <div className="mt-1 text-2xl font-black text-slate-900">{expensesCount}</div>
+                <div className="text-xs font-semibold text-slate-600">Текущ баланс</div>
+                <div className="mt-1 text-2xl font-black text-slate-900">{fmtMoney(balance)}</div>
+                <div className="text-xs text-slate-500 mt-1">Начален + плащания - разходи</div>
               </div>
 
               <div className="rounded-2xl border border-slate-200 p-4">
@@ -358,6 +378,9 @@ export default function Reports() {
                 </li>
                 <li>
                   <b>Балансът</b> се намалява при добавяне на разход.
+                </li>
+                <li>
+                  <b>Събрани плащания</b> показва пълната платена сума по всички платени апартаменти, а не само по едно начисление.
                 </li>
                 <li>
                   <b>Общо разходи</b> е сумата на всички записи в “История на разходите”.

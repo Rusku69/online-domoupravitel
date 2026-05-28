@@ -2,20 +2,15 @@ import express from "express";
 import requireAuth from "../middleware/requireAuth.js";
 import requireRoomActive from "../middleware/requireRoomActive.js";
 import Room from "../models/Room.js";
-import User from "../models/User.js";
 import Payment from "../models/Payment.js";
+import { buildPaidApartmentSet, getPaymentTargetApartments } from "../src/utils/apartments.js";
 
 const router = express.Router();
 
-// helper: дали payment е платено от даден апартамент
-function paidByApartment(payment, userIdsSet) {
-  return (payment.paidBy || []).some((x) => userIdsSet.has(String(x.user)));
-}
-
-function statusForPaymentAndApartment(payment, userIdsSet) {
+function statusForPaymentAndApartment(payment, apartment) {
   const now = new Date();
   const due = payment.dateTo ? new Date(payment.dateTo) : null;
-  const paid = paidByApartment(payment, userIdsSet);
+  const paid = buildPaidApartmentSet(payment).has(apartment);
 
   if (paid) return "paid";
   if (due && due < now) return "overdue";
@@ -36,44 +31,27 @@ router.get("/apartments-status", requireAuth, requireRoomActive, async (req, res
       return res.json({ apartmentsCount: 0, apartments: [] });
     }
 
-    // взимаме approved users за стаята
-    const users = await User.find({ roomId: room._id, memberStatus: "approved" }).select("_id apartment");
-
-    // map apt -> set(userIds)
-    const aptMap = new Map();
-    for (let i = 1; i <= apartmentsCount; i++) {
-      aptMap.set(String(i), new Set());
-    }
-    for (const u of users) {
-      const a = String(u.apartment || "").trim();
-      if (aptMap.has(a)) aptMap.get(a).add(String(u._id));
-    }
-
     const payments = await Payment.find({ roomId: room._id }).sort({ createdAt: -1 });
 
     const apartments = [];
-    for (let i = 1; i <= apartmentsCount; i++) {
+    for (let i = 1; i <= apartmentsCount; i += 1) {
       const apt = String(i);
-      const userIdsSet = aptMap.get(apt) || new Set();
-
-      // релевантни плащания за този апартамент:
-      // - общи (apartment == "")
-      // - конкретно за този апартамент
-      const relevant = payments.filter((p) => {
-        const pa = String(p.apartment || "").trim();
-        return pa === "" || pa === apt;
+      const relevant = payments.filter((payment) => {
+        const targets = getPaymentTargetApartments(payment);
+        return !targets.length || targets.includes(apt);
       });
 
-      let paid = 0, unpaid = 0, overdue = 0;
+      let paid = 0;
+      let unpaid = 0;
+      let overdue = 0;
 
-      for (const p of relevant) {
-        const st = statusForPaymentAndApartment(p, userIdsSet);
-        if (st === "paid") paid++;
-        else if (st === "overdue") overdue++;
-        else unpaid++;
+      for (const payment of relevant) {
+        const status = statusForPaymentAndApartment(payment, apt);
+        if (status === "paid") paid += 1;
+        else if (status === "overdue") overdue += 1;
+        else unpaid += 1;
       }
 
-      // “общ статус” за hover: най-лошият има приоритет
       const overall = overdue > 0 ? "overdue" : unpaid > 0 ? "unpaid" : "paid";
 
       apartments.push({

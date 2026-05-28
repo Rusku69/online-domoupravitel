@@ -2,6 +2,13 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import Room from "../models/Room.js";
 import User from "../models/User.js";
+import {
+  apartmentSort,
+  formatApartmentList,
+  getMemberApartments,
+  getOccupiedApartmentSet,
+  getUserApartments,
+} from "../src/utils/apartments.js";
 
 const router = express.Router();
 
@@ -42,7 +49,17 @@ function subStatus(room) {
   };
 }
 
-// ✅ GET /api/admin/rooms?q=plovdiv&active=true
+function sortMembers(members) {
+  return [...members].sort((a, b) => {
+    if (a.isRoomManager && !b.isRoomManager) return -1;
+    if (!a.isRoomManager && b.isRoomManager) return 1;
+
+    const aFirst = Array.isArray(a.apartments) ? a.apartments[0] || "" : String(a.apartment || "");
+    const bFirst = Array.isArray(b.apartments) ? b.apartments[0] || "" : String(b.apartment || "");
+    return apartmentSort(aFirst, bFirst);
+  });
+}
+
 router.get("/rooms", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { q, active } = req.query;
@@ -62,17 +79,17 @@ router.get("/rooms", requireAuth, requireAdmin, async (req, res) => {
       .sort({ createdAt: -1 })
       .populate("createdBy", "name email phone");
 
-    const mapped = rooms.map((r) => ({
-      _id: r._id,
-      code: r.code,
-      city: r.city,
-      building: r.building,
-      entrance: r.entrance,
-      apartmentsCount: r.apartmentsCount ?? null,
-      createdAt: r.createdAt,
-      createdBy: r.createdBy || null,
-      membersCount: Array.isArray(r.members) ? r.members.length : 0,
-      subscription: subStatus(r),
+    const mapped = rooms.map((room) => ({
+      _id: room._id,
+      code: room.code,
+      city: room.city,
+      building: room.building,
+      entrance: room.entrance,
+      apartmentsCount: room.apartmentsCount ?? null,
+      createdAt: room.createdAt,
+      createdBy: room.createdBy || null,
+      membersCount: Array.isArray(room.members) ? room.members.length : 0,
+      subscription: subStatus(room),
     }));
 
     let out = mapped;
@@ -85,8 +102,6 @@ router.get("/rooms", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-// ✅ PUT /api/admin/rooms/:roomId/settings
-// Body: { apartmentsCount?, trialEndsAt?, subscriptionExpires? }
 router.put("/rooms/:roomId/settings", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { roomId } = req.params;
@@ -101,6 +116,18 @@ router.put("/rooms/:roomId/settings", requireAuth, requireAdmin, async (req, res
       if (!Number.isFinite(n) || n <= 0 || n > 500) {
         return res.status(400).json({ message: "Невалиден брой апартаменти (1-500)" });
       }
+
+      if (room.apartmentsCount !== null) {
+        const occupied = Array.from(getOccupiedApartmentSet(room));
+        const invalidOccupied = occupied.filter((apt) => /^\d+$/.test(apt) && Number(apt) > n);
+
+        if (invalidOccupied.length) {
+          return res.status(400).json({
+            message: `Не може да намалиш броя под вече заетите апартаменти: ${invalidOccupied.join(", ")}.`,
+          });
+        }
+      }
+
       room.apartmentsCount = n;
     }
 
@@ -115,7 +142,7 @@ router.put("/rooms/:roomId/settings", requireAuth, requireAdmin, async (req, res
     await room.save();
 
     res.json({
-      message: "✅ Запазено.",
+      message: "Запазено.",
       room: {
         _id: room._id,
         apartmentsCount: room.apartmentsCount ?? null,
@@ -129,8 +156,6 @@ router.put("/rooms/:roomId/settings", requireAuth, requireAdmin, async (req, res
   }
 });
 
-// ✅ GET /api/admin/rooms/:roomId/members
-// Детайл за членове на стаята + роля/статус
 router.get("/rooms/:roomId/members", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { roomId } = req.params;
@@ -140,55 +165,63 @@ router.get("/rooms/:roomId/members", requireAuth, requireAdmin, async (req, res)
 
     const ownerId = String(room.createdBy || "");
     const usersInRoom = await User.find({ roomId: room._id })
-      .select("name email phone apartment role memberStatus")
+      .select("name email phone apartment apartments role memberStatus")
       .lean();
 
     const usersById = new Map(usersInRoom.map((u) => [String(u._id), u]));
     const members = [];
 
-    // 1) Вземаме members от room документа (ако има snapshots, пазим ги).
-    for (const m of room.members || []) {
-      const uid = m?.user ? String(m.user) : "";
-      const u = uid ? usersById.get(uid) : null;
+    for (const member of room.members || []) {
+      const uid = member?.user ? String(member.user) : "";
+      const user = uid ? usersById.get(uid) : null;
+      const apartments = getMemberApartments(member).length
+        ? getMemberApartments(member)
+        : getUserApartments(user);
 
       members.push({
-        _id: u?._id || (uid || null),
-        name: m?.nameSnapshot || u?.name || "—",
-        email: u?.email || "—",
-        phone: m?.phoneSnapshot || u?.phone || "",
-        apartment: m?.apartment || u?.apartment || "",
-        role: u?.role || "resident",
-        memberStatus: m?.status || u?.memberStatus || "pending",
+        _id: user?._id || (uid || null),
+        name: member?.nameSnapshot || user?.name || "—",
+        email: user?.email || "—",
+        phone: member?.phoneSnapshot || user?.phone || "",
+        apartment: apartments[0] || "",
+        apartments,
+        apartmentLabel: formatApartmentList(apartments),
+        role: user?.role || "resident",
+        memberStatus: member?.status || user?.memberStatus || "pending",
         isRoomManager: !!(uid && ownerId && uid === ownerId),
       });
 
       if (uid) usersById.delete(uid);
     }
 
-    // 2) Допълваме с users, които имат roomId, но ги няма в room.members.
-    for (const [uid, u] of usersById.entries()) {
+    for (const [uid, user] of usersById.entries()) {
+      const apartments = getUserApartments(user);
       members.push({
-        _id: u._id,
-        name: u.name || "—",
-        email: u.email || "—",
-        phone: u.phone || "",
-        apartment: u.apartment || "",
-        role: u.role || "resident",
-        memberStatus: u.memberStatus || "pending",
+        _id: user._id,
+        name: user.name || "—",
+        email: user.email || "—",
+        phone: user.phone || "",
+        apartment: apartments[0] || "",
+        apartments,
+        apartmentLabel: formatApartmentList(apartments),
+        role: user.role || "resident",
+        memberStatus: user.memberStatus || "pending",
         isRoomManager: !!(ownerId && uid === ownerId),
       });
     }
 
-    // 3) Ако домоуправителят липсва в горния списък, добавяме го изрично.
     if (ownerId && !members.some((x) => String(x._id || "") === ownerId)) {
-      const owner = await User.findById(ownerId).select("name email phone apartment role memberStatus").lean();
+      const owner = await User.findById(ownerId).select("name email phone apartment apartments role memberStatus").lean();
       if (owner) {
+        const apartments = getUserApartments(owner);
         members.unshift({
           _id: owner._id,
           name: owner.name || "—",
           email: owner.email || "—",
           phone: owner.phone || "",
-          apartment: owner.apartment || "",
+          apartment: apartments[0] || "",
+          apartments,
+          apartmentLabel: formatApartmentList(apartments),
           role: owner.role || "manager",
           memberStatus: owner.memberStatus || "approved",
           isRoomManager: true,
@@ -200,6 +233,8 @@ router.get("/rooms/:roomId/members", requireAuth, requireAdmin, async (req, res)
           email: "—",
           phone: "",
           apartment: "",
+          apartments: [],
+          apartmentLabel: "—",
           role: "manager",
           memberStatus: "approved",
           isRoomManager: true,
@@ -207,14 +242,7 @@ router.get("/rooms/:roomId/members", requireAuth, requireAdmin, async (req, res)
       }
     }
 
-    const sorted = members.sort((a, b) => {
-      if (a.isRoomManager && !b.isRoomManager) return -1;
-      if (!a.isRoomManager && b.isRoomManager) return 1;
-
-      const aApt = String(a.apartment || "");
-      const bApt = String(b.apartment || "");
-      return aApt.localeCompare(bApt, "bg", { numeric: true, sensitivity: "base" });
-    });
+    const sorted = sortMembers(members);
 
     const summary = {
       total: sorted.length,

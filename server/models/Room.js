@@ -28,6 +28,7 @@ const roomSchema = new mongoose.Schema(
     finance: {
       iban: { type: String, default: "" },
       holderName: { type: String, default: "" },
+      openingBalance: { type: Number, default: null },
       balance: { type: Number, default: 0 },
       locked: { type: Boolean, default: false },
       expenses: [
@@ -45,6 +46,7 @@ const roomSchema = new mongoose.Schema(
         status: { type: String, enum: ["approved", "pending"], default: "pending" },
 
         apartment: { type: String, default: "" },
+        apartments: { type: [String], default: [] },
         nameSnapshot: { type: String, default: "" },
         phoneSnapshot: { type: String, default: "" },
         tenantTag: { type: Boolean, default: false },

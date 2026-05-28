@@ -4,6 +4,15 @@ import api from "../lib/api";
 import { useAuth } from "../store/auth";
 import { PageHeader, HelpCard, ErrorBox } from "../components/PageBits";
 import { roleLabel } from "../lib/roles";
+import {
+  countPaidUnits,
+  formatApartmentList,
+  getOutstandingApartmentsForUser,
+  getPaidEntryApartments,
+  getPaymentTargetApartments,
+  getUserApartments,
+  paymentScopeLabel,
+} from "../lib/apartments";
 
 function fmtDate(d) {
   if (!d) return "—";
@@ -54,9 +63,7 @@ function monthKey(dateLike) {
   if (!dateLike) return null;
   const d = new Date(dateLike);
   if (Number.isNaN(d.getTime())) return null;
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  return `${y}-${m}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
 function monthLabel(key) {
@@ -86,34 +93,25 @@ export default function Dashboard() {
   const [payments, setPayments] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
   const [signals, setSignals] = useState([]);
-
   const [roomInfo, setRoomInfo] = useState(null);
   const [selectedMonth, setSelectedMonth] = useState("");
   const [selectedPaymentId, setSelectedPaymentId] = useState("");
   const [activeApt, setActiveApt] = useState(null);
-
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
   const hasRoom = !!user?.roomId;
   const approved = user?.memberStatus === "approved";
   const canAccessRoomData = hasRoom && approved;
+  const userApartmentLabel = useMemo(() => formatApartmentList(getUserApartments(user)), [user]);
 
   const load = async () => {
     try {
       setLoading(true);
       setErr("");
 
-      // reset ако нямаш достъп
-      if (!canAccessRoomData) {
-        setPayments([]);
-        setAnnouncements([]);
-        setSignals([]);
-      }
-
       const reqs = [];
 
-      // protected: само ако имаш room + approved
       if (canAccessRoomData) {
         reqs.push(api.get("/api/payments"));
         reqs.push(api.get("/api/announcements"));
@@ -124,7 +122,6 @@ export default function Dashboard() {
         reqs.push(Promise.resolve({ data: [] }));
       }
 
-      // room info може да го искаш ако имаш roomId (дори да не си approved още)
       if (hasRoom) reqs.push(api.get(`/api/rooms/${user.roomId}`));
       else reqs.push(Promise.resolve({ data: null }));
 
@@ -135,8 +132,7 @@ export default function Dashboard() {
       setSignals(Array.isArray(res[2].data) ? res[2].data : []);
       setRoomInfo(res[3]?.data || null);
     } catch (e) {
-      const msg = e?.response?.data?.message || "Грешка при зареждане на таблото";
-      setErr(msg);
+      setErr(e?.response?.data?.message || "Грешка при зареждане на таблото");
     } finally {
       setLoading(false);
     }
@@ -148,103 +144,96 @@ export default function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.roomId, user?.memberStatus, user?.role]);
 
-  const myId = user?.id || user?._id;
-
-  const paidSet = useMemo(() => {
-    const set = new Set();
-    for (const p of payments) {
-      const paid = (p.paidBy || []).some((x) => String(x.user?._id || x.user) === String(myId));
-      if (paid) set.add(String(p._id));
-    }
-    return set;
-  }, [payments, myId]);
-
-  const myUnpaid = useMemo(() => {
+  const residentUnpaid = useMemo(() => {
     if (isManager) return [];
-    return payments.filter((p) => !paidSet.has(String(p._id)));
-  }, [payments, paidSet, isManager]);
+
+    return payments
+      .map((payment) => ({
+        payment,
+        outstandingApartments: getOutstandingApartmentsForUser(payment, user),
+      }))
+      .filter((item) => item.outstandingApartments.length > 0);
+  }, [isManager, payments, user]);
 
   const lastAnnouncements = useMemo(() => announcements.slice(0, 3), [announcements]);
   const lastSignals = useMemo(() => signals.slice(0, 3), [signals]);
 
   const monthOptions = useMemo(() => {
     if (!isManager) return [];
+
     const keys = new Set();
-    for (const p of payments) {
-      const k = monthKey(p.dateFrom || p.createdAt);
-      if (k) keys.add(k);
+    for (const payment of payments) {
+      const key = monthKey(payment.dateFrom || payment.createdAt);
+      if (key) keys.add(key);
     }
-    const arr = Array.from(keys);
-    arr.sort((a, b) => (a < b ? 1 : -1));
-    return arr;
-  }, [payments, isManager]);
+
+    return Array.from(keys).sort((a, b) => (a < b ? 1 : -1));
+  }, [isManager, payments]);
 
   useEffect(() => {
-    if (!isManager) return;
-    if (!selectedMonth && monthOptions.length > 0) {
-      setSelectedMonth(monthOptions[0]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isManager, monthOptions.length]);
+    if (!isManager || selectedMonth || monthOptions.length === 0) return;
+    setSelectedMonth(monthOptions[0]);
+  }, [isManager, monthOptions, selectedMonth]);
 
   const managerPaymentList = useMemo(() => {
     if (!isManager) return [];
-    let arr = [...payments];
 
-    if (selectedMonth) {
-      arr = arr.filter((p) => monthKey(p.dateFrom || p.createdAt) === selectedMonth);
-    }
+    const filtered = selectedMonth
+      ? payments.filter((payment) => monthKey(payment.dateFrom || payment.createdAt) === selectedMonth)
+      : payments;
 
-    arr.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-    return arr;
-  }, [payments, isManager, selectedMonth]);
+    return [...filtered].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  }, [isManager, payments, selectedMonth]);
 
   useEffect(() => {
     if (!isManager) return;
+
     if (!selectedPaymentId && managerPaymentList.length > 0) {
       setSelectedPaymentId(String(managerPaymentList[0]._id));
+      return;
     }
-    const exists = managerPaymentList.some((p) => String(p._id) === String(selectedPaymentId));
-    if (selectedPaymentId && !exists && managerPaymentList.length > 0) {
-      setSelectedPaymentId(String(managerPaymentList[0]._id));
+
+    const exists = managerPaymentList.some((payment) => String(payment._id) === String(selectedPaymentId));
+    if (selectedPaymentId && !exists) {
+      setSelectedPaymentId(managerPaymentList[0]?._id ? String(managerPaymentList[0]._id) : "");
       setActiveApt(null);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isManager, managerPaymentList.length, selectedMonth]);
+  }, [isManager, managerPaymentList, selectedPaymentId]);
 
   const selectedPayment = useMemo(() => {
     if (!isManager) return null;
-    return managerPaymentList.find((p) => String(p._id) === String(selectedPaymentId)) || null;
+    return managerPaymentList.find((payment) => String(payment._id) === String(selectedPaymentId)) || null;
   }, [isManager, managerPaymentList, selectedPaymentId]);
 
   const apartmentsCount = useMemo(() => {
-    const n = roomInfo?.apartmentsCount;
-    return Number.isFinite(Number(n)) && Number(n) > 0 ? Number(n) : null;
+    const n = Number(roomInfo?.apartmentsCount || 0);
+    return Number.isInteger(n) && n > 0 ? n : null;
   }, [roomInfo]);
 
   const aptStatus = useMemo(() => {
     if (!isManager || !selectedPayment || !apartmentsCount) return null;
 
-    const targetApt = String(selectedPayment.apartment || "").trim();
-
+    const targets = getPaymentTargetApartments(selectedPayment);
     const paidByGrouped = {};
-    for (const x of selectedPayment.paidBy || []) {
-      const apt = String(x.user?.apartment || "").trim();
-      if (!apt) continue;
-      if (!paidByGrouped[apt]) paidByGrouped[apt] = [];
-      paidByGrouped[apt].push({
-        name: x.user?.name || "—",
-        apartment: apt,
-        method: x.method || "",
-        paidAt: x.paidAt || null,
-      });
+
+    for (const entry of selectedPayment.paidBy || []) {
+      const paidApartments = getPaidEntryApartments(entry);
+      for (const apt of paidApartments) {
+        if (!paidByGrouped[apt]) paidByGrouped[apt] = [];
+        paidByGrouped[apt].push({
+          name: entry.user?.name || "—",
+          apartments: paidApartments,
+          method: entry.method || "",
+          paidAt: entry.paidAt || null,
+        });
+      }
     }
 
     const map = {};
-    for (let i = 1; i <= apartmentsCount; i++) {
+    for (let i = 1; i <= apartmentsCount; i += 1) {
       const apt = String(i);
 
-      if (targetApt && targetApt !== apt) {
+      if (targets.length && !targets.includes(apt)) {
         map[apt] = { status: "na", paidBy: [] };
         continue;
       }
@@ -256,20 +245,19 @@ export default function Dashboard() {
     return map;
   }, [isManager, selectedPayment, apartmentsCount]);
 
-  // суми за избраното начисление (само за manager)
   const selectedPaymentAmounts = useMemo(() => {
     if (!isManager || !selectedPayment || !apartmentsCount) return null;
 
     const amount = Number(selectedPayment.amount) || 0;
-    const paidCount = (selectedPayment.paidBy || []).length;
+    const targets = getPaymentTargetApartments(selectedPayment);
+    const totalUnits = targets.length || apartmentsCount;
 
-    const collected = paidCount * amount;
-
-    // ако начислението е за конкретен апартамент -> общо = amount
-    // ако е за всички -> общо = apartmentsCount * amount
-    const totalDue = String(selectedPayment.apartment || "").trim() ? amount : apartmentsCount * amount;
-
-    return { collected, totalDue, amount, paidCount };
+    return {
+      amount,
+      totalDue: totalUnits * amount,
+      collected: countPaidUnits(selectedPayment) * amount,
+      paidUnits: countPaidUnits(selectedPayment),
+    };
   }, [isManager, selectedPayment, apartmentsCount]);
 
   const roomBalance = useMemo(() => {
@@ -287,11 +275,11 @@ export default function Dashboard() {
             title="Табло"
             subtitle={
               <>
-                Това е твоят контролен панел за входа — бърз преглед на най-важното.
+                Това е твоят контролен панел за входа.
                 <br />
                 {isManager
-                  ? "Като домоуправител: следиш плащания, обяви и сигнали."
-                  : "Като живущ: виждаш задължения, обяви и последни сигнали."}
+                  ? "Като домоуправител следиш плащания, обяви и сигнали по апартаменти."
+                  : "Като живущ виждаш остатъците по твоите апартаменти, обяви и последни сигнали."}
               </>
             }
             right={
@@ -310,24 +298,20 @@ export default function Dashboard() {
             <div className="flex flex-wrap items-center gap-2">
               <Pill tone={hasRoom ? "green" : "red"}>Стая: {hasRoom ? "активна" : "няма"}</Pill>
               <Pill tone={approved ? "green" : "yellow"}>Достъп: {approved ? "одобрен" : "чака"}</Pill>
-              <Pill tone="sky">Роля: {roleLabel(user.role)}</Pill>
+              <Pill tone="sky">Роля: {roleLabel(user.role, user)}</Pill>
               <Pill tone="gray">
                 {user.city ? `${user.city} • ` : ""}
-                Блок {user.building || "—"} • Вход {user.entrance || "—"} {user.apartment ? `• Ап ${user.apartment}` : ""}
+                Блок {user.building || "—"} • Вход {user.entrance || "—"}
+                {userApartmentLabel && userApartmentLabel !== "—" ? ` • Ап ${userApartmentLabel}` : ""}
               </Pill>
-            </div>
-
-            <div className="text-xs text-slate-500 mt-3">
-              Ако нямаш стая или не си одобрен, таблото няма да зарежда плащания/обяви/сигнали (за да няма 403).
             </div>
           </div>
 
-          {/* Friendly gate screen */}
           {!hasRoom ? (
             <div className="rounded-3xl border border-amber-200 bg-amber-50 p-6">
               <div className="text-lg font-black text-amber-900">Първо влез в стая</div>
               <div className="text-sm text-amber-900/90 mt-2">
-                За да се появят плащания/обяви/сигнали, трябва да въведеш код за стая и апартамент.
+                За да се появят данните в таблото, трябва да влезеш в стая и да бъдеш одобрен.
               </div>
               <Link
                 to="/room"
@@ -340,7 +324,7 @@ export default function Dashboard() {
             <div className="rounded-3xl border border-amber-200 bg-amber-50 p-6">
               <div className="text-lg font-black text-amber-900">Чакаш одобрение</div>
               <div className="text-sm text-amber-900/90 mt-2">
-                Вече си подал заявка към стаята. Домоуправителят трябва да те одобри, за да видиш съдържанието.
+                Домоуправителят трябва да одобри заявката ти, преди да се заредят секциите на входа.
               </div>
               <Link
                 to="/room"
@@ -358,38 +342,40 @@ export default function Dashboard() {
                   <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
                     <div className="font-black text-slate-900">Моите задължения</div>
                     <div className="text-sm text-slate-600 mt-2">
-                      Това са начисленията, които виждаш (общи + само за твоя апартамент).
+                      Тук виждаш начисленията, по които има оставащи апартаменти за твоя профил.
                     </div>
 
-                    {myUnpaid.length === 0 ? (
+                    {residentUnpaid.length === 0 ? (
                       <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
-                        Нямаш неплатени начисления (по данните в системата).
+                        Нямаш неплатени начисления.
                       </div>
                     ) : (
                       <div className="mt-4 space-y-3">
                         <div className="text-sm">
-                          Неплатени: <b>{myUnpaid.length}</b>
+                          Неплатени начисления: <b>{residentUnpaid.length}</b>
                         </div>
-                        {myUnpaid.slice(0, 5).map((p) => (
-                          <div key={p._id} className="rounded-3xl border border-slate-200 p-5 bg-white shadow-sm">
-                            <div className="font-black text-slate-900">{p.description}</div>
-                            <div className="text-sm text-slate-600 mt-1">
-                              {p.apartment ? `Само за ап. ${p.apartment}` : "За всички апартаменти"} •{" "}
-                              {Number(p.amount).toFixed(2)} €
+
+                        {residentUnpaid.slice(0, 5).map(({ payment, outstandingApartments }) => {
+                          const amount = Number(payment.amount) || 0;
+
+                          return (
+                            <div key={payment._id} className="rounded-3xl border border-slate-200 p-5 bg-white shadow-sm">
+                              <div className="font-black text-slate-900">{payment.description}</div>
+                              <div className="text-sm text-slate-600 mt-1">
+                                {paymentScopeLabel(payment)} • {amount.toFixed(2)} €
+                              </div>
+                              <div className="text-xs text-slate-500 mt-2">
+                                Остават апартаменти: <b>{formatApartmentList(outstandingApartments)}</b>
+                              </div>
+                              <div className="text-xs text-slate-500 mt-2">
+                                Остатък: <b>{(outstandingApartments.length * amount).toFixed(2)} €</b>
+                              </div>
+                              <div className="text-xs text-slate-500 mt-2">
+                                За плащане отвори секцията <b>Плащания</b>.
+                              </div>
                             </div>
-                            <div className="text-xs text-slate-500 mt-2">
-                              Период: {fmtDate(p.dateFrom)} → {fmtDate(p.dateTo)}
-                            </div>
-                            <div className="text-xs text-slate-500 mt-2">
-                              За плащане отвори секцията <b>Плащания</b>.
-                            </div>
-                          </div>
-                        ))}
-                        {myUnpaid.length > 5 && (
-                          <div className="text-xs text-slate-500">
-                            Показвам само първите 5. Останалите са в “Плащания”.
-                          </div>
-                        )}
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -402,14 +388,13 @@ export default function Dashboard() {
                       <div className="text-sm text-slate-500 mt-4">Няма обяви.</div>
                     ) : (
                       <div className="mt-4 space-y-3">
-                        {lastAnnouncements.map((a) => (
-                          <div key={a._id} className="rounded-3xl border border-slate-200 p-5 bg-white shadow-sm">
-                            <div className="font-black text-slate-900">{a.title}</div>
-                            <div className="text-xs text-slate-500 mt-1">{fmtDateTime(a.createdAt)}</div>
+                        {lastAnnouncements.map((announcement) => (
+                          <div key={announcement._id} className="rounded-3xl border border-slate-200 p-5 bg-white shadow-sm">
+                            <div className="font-black text-slate-900">{announcement.title}</div>
+                            <div className="text-xs text-slate-500 mt-1">{fmtDateTime(announcement.createdAt)}</div>
                             <div className="text-sm text-slate-700 mt-3 line-clamp-3 whitespace-pre-wrap leading-relaxed">
-                              {a.content}
+                              {announcement.content}
                             </div>
-                            <div className="text-xs text-slate-500 mt-3">За целия текст: секция “Обяви”.</div>
                           </div>
                         ))}
                       </div>
@@ -424,14 +409,13 @@ export default function Dashboard() {
                       <div className="text-sm text-slate-500 mt-4">Няма сигнали.</div>
                     ) : (
                       <div className="mt-4 space-y-3">
-                        {lastSignals.map((s) => (
-                          <div key={s._id} className="rounded-3xl border border-slate-200 p-5 bg-white shadow-sm">
-                            <div className="font-black text-slate-900">{s.title || "Сигнал"}</div>
-                            <div className="text-xs text-slate-500 mt-1">{fmtDateTime(s.createdAt)}</div>
+                        {lastSignals.map((signal) => (
+                          <div key={signal._id} className="rounded-3xl border border-slate-200 p-5 bg-white shadow-sm">
+                            <div className="font-black text-slate-900">{signal.title || "Сигнал"}</div>
+                            <div className="text-xs text-slate-500 mt-1">{fmtDateTime(signal.createdAt)}</div>
                             <div className="text-sm text-slate-700 mt-3 line-clamp-3 whitespace-pre-wrap leading-relaxed">
-                              {s.description || s.content || ""}
+                              {signal.description || signal.content || ""}
                             </div>
-                            <div className="text-xs text-slate-500 mt-3">За детайли: секция “Сигнали”.</div>
                           </div>
                         ))}
                       </div>
@@ -445,10 +429,7 @@ export default function Dashboard() {
                       <div>
                         <div className="font-black text-slate-900">Апартаменти: статус по начисление</div>
                         <div className="text-sm text-slate-600 mt-2">
-                          Избираш месец и начисление и виждаш кои апартаменти са платили.
-                        </div>
-                        <div className="text-xs text-slate-500 mt-2">
-                          Зелен = платено • Червен = неплатено • Сив = не важи
+                          Избираш месец и начисление и виждаш кои апартаменти са го платили.
                         </div>
                       </div>
 
@@ -467,9 +448,9 @@ export default function Dashboard() {
                             {monthOptions.length === 0 ? (
                               <option value="">Няма данни</option>
                             ) : (
-                              monthOptions.map((k) => (
-                                <option key={k} value={k}>
-                                  {monthLabel(k)}
+                              monthOptions.map((key) => (
+                                <option key={key} value={key}>
+                                  {monthLabel(key)}
                                 </option>
                               ))
                             )}
@@ -489,23 +470,19 @@ export default function Dashboard() {
                             {managerPaymentList.length === 0 ? (
                               <option value="">Няма начисления за месеца</option>
                             ) : (
-                              managerPaymentList.map((p) => (
-                                <option key={p._id} value={p._id}>
-                                  {p.description} • {Number(p.amount).toFixed(2)} €
-                                  {p.apartment ? ` • (ап. ${p.apartment})` : " • (за всички)"}
+                              managerPaymentList.map((payment) => (
+                                <option key={payment._id} value={payment._id}>
+                                  {payment.description} • {Number(payment.amount).toFixed(2)} € • {paymentScopeLabel(payment)}
                                 </option>
                               ))
                             )}
                           </select>
 
-                          <div className="text-xs text-slate-500 mt-2">
-                            Период: {fmtDate(selectedPayment?.dateFrom)} → {fmtDate(selectedPayment?.dateTo)}
-                          </div>
-
-                          {selectedPaymentAmounts && (
+                          {selectedPayment && selectedPaymentAmounts && (
                             <div className="text-xs text-slate-500 mt-2">
-                              Събрано: <b>{Number(selectedPaymentAmounts.collected).toFixed(2)} €</b> от{" "}
-                              <b>{Number(selectedPaymentAmounts.totalDue).toFixed(2)} €</b>
+                              Събрано: <b>{selectedPaymentAmounts.collected.toFixed(2)} €</b> от{" "}
+                              <b>{selectedPaymentAmounts.totalDue.toFixed(2)} €</b> • Платени апартаменти:{" "}
+                              <b>{selectedPaymentAmounts.paidUnits}</b>
                             </div>
                           )}
                         </div>
@@ -523,15 +500,14 @@ export default function Dashboard() {
                         {Array.from({ length: apartmentsCount }, (_, i) => {
                           const apt = String(i + 1);
                           const info = aptStatus?.[apt] || { status: "na", paidBy: [] };
-                          const status = info.status;
 
                           return (
                             <button
                               key={apt}
                               type="button"
                               onClick={() => setActiveApt(apt)}
-                              className={`relative rounded-2xl px-2 py-3 text-sm font-black transition hover:scale-[1.02] ${cellTone(
-                                status
+                              className={`rounded-2xl px-2 py-3 text-sm font-black transition hover:scale-[1.02] ${cellTone(
+                                info.status
                               )}`}
                             >
                               {apt}
@@ -547,7 +523,7 @@ export default function Dashboard() {
                           <div>
                             <div className="font-black text-slate-900">Детайл за ап. {activeApt}</div>
                             <div className="text-sm text-slate-700 mt-1">
-                              Начисление: <b>{selectedPayment.description}</b> • {Number(selectedPayment.amount).toFixed(2)} €
+                              Начисление: <b>{selectedPayment.description}</b> • {paymentScopeLabel(selectedPayment)}
                             </div>
                             <div className="text-xs text-slate-500 mt-2">
                               Период: {fmtDate(selectedPayment.dateFrom)} → {fmtDate(selectedPayment.dateTo)}
@@ -564,11 +540,22 @@ export default function Dashboard() {
 
                         {aptStatus?.[activeApt]?.status === "na" ? (
                           <div className="mt-3 text-sm text-slate-600">
-                            Това начисление е за друг апартамент ({selectedPayment.apartment}). Този апартамент не участва.
+                            Това начисление не важи за ап. {activeApt}.
                           </div>
                         ) : aptStatus?.[activeApt]?.status === "paid" ? (
-                          <div className="mt-4 rounded-2xl border border-emerald-200 bg-white p-4 text-sm text-emerald-900">
-                            Платено
+                          <div className="mt-4 space-y-2">
+                            <div className="rounded-2xl border border-emerald-200 bg-white p-4 text-sm text-emerald-900">
+                              Платено
+                            </div>
+                            {(aptStatus?.[activeApt]?.paidBy || []).map((entry, idx) => (
+                              <div key={idx} className="rounded-2xl border border-slate-200 bg-white p-3 text-sm text-slate-700">
+                                <div className="font-semibold text-slate-900">{entry.name}</div>
+                                <div className="text-xs text-slate-500 mt-1">
+                                  Апартаменти в записа: {formatApartmentList(entry.apartments)} • Метод:{" "}
+                                  {entry.method === "stripe" ? "Stripe" : entry.method || "—"} • {fmtDateTime(entry.paidAt)}
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         ) : (
                           <div className="mt-4 rounded-2xl border border-rose-200 bg-white p-4 text-sm text-rose-900">
@@ -608,22 +595,22 @@ export default function Dashboard() {
               <div className="space-y-4">
                 <HelpCard title="Как да ползваш таблото">
                   <ul className="list-disc pl-5 mt-2 space-y-2">
-                    <li>Първо виж задължения/сигнали.</li>
-                    <li>Чети обявите редовно.</li>
-                    <li>Ако липсва нещо — натисни “Обнови”.</li>
+                    <li>Провери първо задълженията и последните обяви.</li>
+                    <li>Ако имаш няколко апартамента, гледай остатъците по всички.</li>
+                    <li>Натисни “Обнови”, ако очакваш нови данни.</li>
                   </ul>
                 </HelpCard>
 
-                <HelpCard title="Бърз навик">
-                  Ако си живущ: проверявай таблото 10 секунди — ще знаеш дали има неплатено/обява/сигнал.
+                <HelpCard title="Полезно">
+                  {isManager
+                    ? "При едно начисление зеленото означава, че конкретният апартамент вече е платил, а червеното — че още не е."
+                    : "Таблото събира само най-важното. За детайлно плащане отвори секцията “Плащания”."}
                 </HelpCard>
               </div>
             </div>
           )}
         </div>
       </div>
-
-      
     </div>
   );
 }

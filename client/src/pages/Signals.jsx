@@ -3,6 +3,7 @@ import api from "../lib/api";
 import { useAuth } from "../store/auth";
 import { PageHeader, HelpCard, ErrorBox, SuccessBox } from "../components/PageBits";
 import SiteFooter from "../components/SiteFooter";
+import { getUserApartments } from "../lib/apartments";
 
 function fmtDateTime(d) {
   if (!d) return "—";
@@ -40,7 +41,7 @@ export default function Signals() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [floor, setFloor] = useState("");
-  const [apartment, setApartment] = useState(user?.apartment || "");
+  const [apartment, setApartment] = useState("");
 
   // UI filters / “registry” feel
   const [q, setQ] = useState("");
@@ -48,6 +49,14 @@ export default function Signals() {
   const [showCount, setShowCount] = useState(50);
 
   const myId = user?.id || user?._id;
+  const ownedApartments = useMemo(() => getUserApartments(user), [user]);
+
+  useEffect(() => {
+    setApartment((current) => {
+      if (current && ownedApartments.includes(current)) return current;
+      return ownedApartments[0] || "";
+    });
+  }, [ownedApartments]);
 
   const load = async () => {
     try {
@@ -77,7 +86,7 @@ export default function Signals() {
         title,
         description,
         floor,
-        apartment: apartment || user?.apartment || "",
+        apartment: apartment || ownedApartments[0] || user?.apartment || "",
       });
 
       setMsg("Сигналът е изпратен.");
@@ -101,8 +110,6 @@ export default function Signals() {
       setErr(e?.response?.data?.message || "Грешка при обновяване");
     }
   };
-
-  if (!user) return null;
 
   const badge = (s) => {
     const map = {
@@ -187,6 +194,8 @@ export default function Signals() {
   const listSubtitle = isManager
     ? "Като домоуправител можеш да променяш статуса, за да е ясно какво се случва."
     : "Виждаш само твоите сигнали и техния статус. Други сигнали не се показват, за да има анонимност.";
+
+  if (!user) return null;
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
@@ -283,12 +292,26 @@ export default function Signals() {
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-slate-600 mb-1">Апартамент</label>
-                      <input
-                        className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
-                        value={apartment}
-                        onChange={(e) => setApartment(e.target.value)}
-                        placeholder="пример: 12"
-                      />
+                      {ownedApartments.length > 0 ? (
+                        <select
+                          className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
+                          value={apartment}
+                          onChange={(e) => setApartment(e.target.value)}
+                        >
+                          {ownedApartments.map((apt) => (
+                            <option key={apt} value={apt}>
+                              Ап. {apt}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
+                          value={apartment}
+                          onChange={(e) => setApartment(e.target.value)}
+                          placeholder="пример: 12"
+                        />
+                      )}
                     </div>
                   </div>
 
