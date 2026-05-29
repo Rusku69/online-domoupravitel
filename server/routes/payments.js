@@ -1,9 +1,11 @@
 import express from "express";
 import Stripe from "stripe";
 import Payment from "../models/Payment.js";
+import Room from "../models/Room.js";
 import requireAuth from "../middleware/requireAuth.js";
 import requireRoomActive from "../middleware/requireRoomActive.js";
 import {
+  buildPaidApartmentSet,
   getPaidApartmentsForUser,
   getPaymentTargetApartments,
   getUserApartments,
@@ -215,6 +217,80 @@ router.post("/:id/checkout", requireAuth, requireRoomActive, async (req, res) =>
       message: "Грешка при създаване на Stripe Checkout",
       error: err?.raw?.message || err?.message,
     });
+  }
+});
+
+// Ръчно плащане за сив апартамент без регистриран потребител.
+router.post("/:id/manual-paid", requireAuth, requireRoomActive, async (req, res) => {
+  try {
+    if (req.user.role !== "manager") {
+      return res.status(403).json({ message: "Само домоуправител може да отбелязва плащане на ръка." });
+    }
+
+    const apartment = String(req.body.apartment || "").trim();
+    const payerName = String(req.body.payerName || "").trim();
+    if (!apartment) {
+      return res.status(400).json({ message: "Липсва апартамент." });
+    }
+    if (!payerName) {
+      return res.status(400).json({ message: "Въведете име за плащането." });
+    }
+
+    const payment = await Payment.findOne({
+      _id: req.params.id,
+      roomId: req.user.roomId,
+    });
+    if (!payment) {
+      return res.status(404).json({ message: "Начислението не е намерено." });
+    }
+
+    const room = await Room.findById(req.user.roomId);
+    if (!room) return res.status(404).json({ message: "Room not found" });
+    if (String(room.createdBy) !== String(req.user._id)) {
+      return res.status(403).json({ message: "Само създателят на входа може да отбелязва плащане." });
+    }
+
+    const total = Number(room.apartmentsCount || 0);
+    const aptNumber = Number(apartment);
+    if (!Number.isInteger(aptNumber) || aptNumber < 1 || (total > 0 && aptNumber > total)) {
+      return res.status(400).json({ message: "Невалиден апартамент." });
+    }
+
+    // Ако начислението е само за конкретни апартаменти, не позволяваме друг апартамент.
+    const targets = getPaymentTargetApartments(payment);
+    if (targets.length && !targets.includes(apartment)) {
+      return res.status(400).json({ message: "Това начисление не важи за този апартамент." });
+    }
+
+    if (buildPaidApartmentSet(payment).has(apartment)) {
+      return res.status(400).json({ message: "Този апартамент вече е отбелязан като платил." });
+    }
+
+    // Записваме плащането в същия масив, който се използва и за Stripe плащания.
+    payment.paidBy.push({
+      user: null,
+      method: "manual",
+      paidAt: new Date(),
+      payerName,
+      apartment,
+      apartments: [apartment],
+    });
+
+    await payment.save();
+
+    // Увеличаваме текущия баланс, за да се вижда веднага в справките.
+    room.finance = room.finance || {};
+    room.finance.balance = Number(room.finance.balance || 0) + Number(payment.amount || 0);
+    await room.save();
+
+    const updated = await Payment.findById(payment._id)
+      .populate("createdBy", "name email role apartment apartments")
+      .populate("paidBy.user", "name email apartment apartments");
+
+    res.json({ message: "Плащането е отбелязано на ръка.", payment: updated });
+  } catch (err) {
+    console.error("manual paid error:", err);
+    res.status(500).json({ message: "Грешка при ръчно отбелязване на плащане", error: err.message });
   }
 });
 

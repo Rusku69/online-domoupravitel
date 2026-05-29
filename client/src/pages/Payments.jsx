@@ -521,8 +521,9 @@ export default function Payments() {
                                   {(payment.paidBy || []).map((entry, idx) => {
                                     const paidApartments = getPaidEntryApartments(entry);
                                     const u = entry.user || null;
-                                    const name = u?.name || "—";
-                                    const methodLabel = entry.method === "stripe" ? "Stripe" : entry.method || "—";
+                                    // При ръчно плащане няма user, затова показваме въведеното име.
+                                    const name = u?.name || entry.payerName || "—";
+                                    const methodLabel = entry.method === "stripe" ? "Stripe" : entry.method === "manual" ? "На ръка" : entry.method || "—";
 
                                     return (
                                       <div

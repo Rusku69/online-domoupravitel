@@ -7,6 +7,7 @@ import { roleLabel } from "../lib/roles";
 import {
   countPaidUnits,
   formatApartmentList,
+  getMemberApartments,
   getOutstandingApartmentsForUser,
   getPaidEntryApartments,
   getPaymentTargetApartments,
@@ -50,12 +51,14 @@ function Pill({ children, tone = "gray" }) {
 function cellTone(status) {
   if (status === "paid") return "bg-emerald-600 text-white";
   if (status === "unpaid") return "bg-rose-600 text-white";
+  if (status === "unregistered") return "bg-slate-400 text-white";
   return "bg-slate-200 text-slate-600";
 }
 
 function cellSubTone(status) {
   if (status === "paid") return "bg-emerald-50 border-emerald-200";
   if (status === "unpaid") return "bg-rose-50 border-rose-200";
+  if (status === "unregistered") return "bg-slate-50 border-slate-200";
   return "bg-slate-50 border-slate-200";
 }
 
@@ -98,6 +101,8 @@ export default function Dashboard() {
   const [selectedPaymentId, setSelectedPaymentId] = useState("");
   const [activeApt, setActiveApt] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [manualPaying, setManualPaying] = useState(false);
+  const [manualPayerName, setManualPayerName] = useState("");
   const [err, setErr] = useState("");
 
   const hasRoom = !!user?.roomId;
@@ -210,6 +215,17 @@ export default function Dashboard() {
     return Number.isInteger(n) && n > 0 ? n : null;
   }, [roomInfo]);
 
+  // Апартаментите с одобрен потребител остават червени, ако не са платили.
+  const registeredApartments = useMemo(() => {
+    const out = new Set();
+    for (const member of roomInfo?.members || []) {
+      if (member?.status && member.status !== "approved") continue;
+      for (const apt of getMemberApartments(member)) out.add(apt);
+    }
+    return out;
+  }, [roomInfo]);
+
+  // Тук решаваме цвета: зелено = платено, червено = регистриран неплатил, сиво = без потребител.
   const aptStatus = useMemo(() => {
     if (!isManager || !selectedPayment || !apartmentsCount) return null;
 
@@ -221,9 +237,10 @@ export default function Dashboard() {
       for (const apt of paidApartments) {
         if (!paidByGrouped[apt]) paidByGrouped[apt] = [];
         paidByGrouped[apt].push({
-          name: entry.user?.name || "—",
+          name: entry.user?.name || entry.payerName || (entry.method === "manual" ? "Платено на ръка" : "—"),
           apartments: paidApartments,
           method: entry.method || "",
+          payerName: entry.payerName || "",
           paidAt: entry.paidAt || null,
         });
       }
@@ -239,11 +256,14 @@ export default function Dashboard() {
       }
 
       const paidBy = paidByGrouped[apt] || [];
-      map[apt] = { status: paidBy.length > 0 ? "paid" : "unpaid", paidBy };
+      map[apt] = {
+        status: paidBy.length > 0 ? "paid" : registeredApartments.has(apt) ? "unpaid" : "unregistered",
+        paidBy,
+      };
     }
 
     return map;
-  }, [isManager, selectedPayment, apartmentsCount]);
+  }, [isManager, selectedPayment, apartmentsCount, registeredApartments]);
 
   const selectedPaymentAmounts = useMemo(() => {
     if (!isManager || !selectedPayment || !apartmentsCount) return null;
@@ -264,6 +284,40 @@ export default function Dashboard() {
     const b = roomInfo?.finance?.balance;
     return Number.isFinite(Number(b)) ? Number(b) : null;
   }, [roomInfo]);
+
+  // Изпраща ръчно плащане за сив апартамент към backend-а.
+  const markManualPaid = async (apartment) => {
+    if (!selectedPayment?._id || !apartment) return;
+    const payerName = manualPayerName.trim();
+    if (!payerName) {
+      setErr("Въведете име за плащането.");
+      return;
+    }
+
+    try {
+      setManualPaying(true);
+      setErr("");
+
+      const res = await api.post(`/api/payments/${selectedPayment._id}/manual-paid`, { apartment, payerName });
+      const updatedPayment = res.data?.payment;
+
+      if (updatedPayment?._id) {
+        setPayments((items) =>
+          items.map((payment) => (String(payment._id) === String(updatedPayment._id) ? updatedPayment : payment))
+        );
+      }
+
+      if (user?.roomId) {
+        const roomRes = await api.get(`/api/rooms/${user.roomId}`);
+        setRoomInfo(roomRes.data || null);
+      }
+      setManualPayerName("");
+    } catch (e) {
+      setErr(e?.response?.data?.message || "Грешка при ръчно отбелязване на плащане");
+    } finally {
+      setManualPaying(false);
+    }
+  };
 
   if (!user) return null;
 
@@ -552,10 +606,34 @@ export default function Dashboard() {
                                 <div className="font-semibold text-slate-900">{entry.name}</div>
                                 <div className="text-xs text-slate-500 mt-1">
                                   Апартаменти в записа: {formatApartmentList(entry.apartments)} • Метод:{" "}
-                                  {entry.method === "stripe" ? "Stripe" : entry.method || "—"} • {fmtDateTime(entry.paidAt)}
+                                  {entry.method === "stripe" ? "Stripe" : entry.method === "manual" ? "На ръка" : entry.method || "—"} • {fmtDateTime(entry.paidAt)}
                                 </div>
                               </div>
                             ))}
+                          </div>
+                        ) : aptStatus?.[activeApt]?.status === "unregistered" ? (
+                          <div className="mt-4 space-y-3">
+                            <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+                              Няма регистриран потребител за този апартамент.
+                            </div>
+                            {/* Името се пази към ръчното плащане, за да има следа кой е платил. */}
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-600 mb-1">Име за плащането</label>
+                              <input
+                                value={manualPayerName}
+                                onChange={(e) => setManualPayerName(e.target.value)}
+                                placeholder="пример: Иван Петров"
+                                className="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              disabled={manualPaying || !manualPayerName.trim()}
+                              onClick={() => markManualPaid(activeApt)}
+                              className="rounded-2xl px-4 py-3 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 transition disabled:opacity-60"
+                            >
+                              {manualPaying ? "Записване..." : "Платено на ръка"}
+                            </button>
                           </div>
                         ) : (
                           <div className="mt-4 rounded-2xl border border-rose-200 bg-white p-4 text-sm text-rose-900">

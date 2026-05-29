@@ -52,11 +52,11 @@ if (!process.env.MONGO_URI) {
 
 const app = express();
 
-// ✅ CORS (ако ти трябва със специфични домейни, ще го затегнем по-късно)
+// ✅ CORS 
 app.use(cors());
 
 // =======================================================
-// ✅ STRIPE WEBHOOK (RAW BODY) — трябва да е ПРЕДИ express.json()
+// ✅ 
 // =======================================================
 const stripeSecret = process.env.STRIPE_SECRET_KEY || "";
 const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET || "";
@@ -225,19 +225,17 @@ app.post(
 );
 
 // =======================================================
-// ✅ JSON body за всички останали routes
+// ✅ 
 // =======================================================
 app.use(express.json());
 
 // тест
 app.get("/", (req, res) => res.send("✅ Server is running..."));
 
-// ✅ РУТЕСИ
+// ✅ 
 app.use("/api/auth", authRoutes);
 app.use("/api/announcements", announcementRoutes);
 
-// ⚠️ paymentsRoutes вече НЕ трябва да дефинира /stripe/webhook вътре,
-// но дори да го има — няма да стигне до него, защото този горе е по-рано.
 app.use("/api/payments", paymentRoutes);
 
 app.use("/api/reports", reportsRoutes);

@@ -2,14 +2,18 @@ import mongoose from "mongoose";
 
 const paidBySchema = new mongoose.Schema(
   {
-    user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    // Null при плащане на ръка за апартамент без регистриран потребител.
+    user: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
 
-    // ✅ Stripe-only
-    method: { type: String, enum: ["stripe"], default: "stripe" },
+    // Stripe-only
+    // stripe = онлайн плащане, manual = отбелязано от домоуправителя.
+    method: { type: String, enum: ["stripe", "manual"], default: "stripe" },
 
     paidAt: { type: Date, default: Date.now },
+    // Име, което домоуправителят въвежда при ръчно плащане.
+    payerName: { type: String, default: "" },
 
-    // ✅ Stripe details (за UI: “Платено чрез Stripe • ****1234”)
+    // Stripe details (за UI: “Платено чрез Stripe • ****1234”)
     stripeSessionId: { type: String, default: "" },
     stripePaymentIntentId: { type: String, default: "" },
 
@@ -34,14 +38,14 @@ const paymentSchema = new mongoose.Schema(
     dateFrom: { type: Date, default: null },
     dateTo: { type: Date, default: null },
 
-    // ✅ вече работим само в EUR (стойността е EUR)
+    
     amount: { type: Number, required: true },
 
-    // ⚠️ старите полета ги оставяме
+
     status: { type: String, enum: ["paid", "unpaid"], default: "unpaid" },
     paidAt: { type: Date, default: null },
 
-    // ✅ кой е платил това начисление
+
     paidBy: { type: [paidBySchema], default: [] },
 
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
