@@ -559,8 +559,14 @@ export default function Dashboard() {
                             <button
                               key={apt}
                               type="button"
-                              onClick={() => setActiveApt(apt)}
-                              className={`rounded-2xl px-2 py-3 text-sm font-black transition hover:scale-[1.02] ${cellTone(
+                              onClick={() => {
+                                setActiveApt(apt);
+                                setManualPayerName("");
+                                setErr("");
+                              }}
+                              className={`rounded-2xl px-2 py-3 text-sm font-black transition hover:scale-[1.02] cursor-pointer ${
+                                activeApt === apt ? "ring-2 ring-slate-900 ring-offset-2" : ""
+                              } ${cellTone(
                                 info.status
                               )}`}
                             >
@@ -628,11 +634,11 @@ export default function Dashboard() {
                             </div>
                             <button
                               type="button"
-                              disabled={manualPaying || !manualPayerName.trim()}
+                              disabled={manualPaying}
                               onClick={() => markManualPaid(activeApt)}
                               className="rounded-2xl px-4 py-3 text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 transition disabled:opacity-60"
                             >
-                              {manualPaying ? "Записване..." : "Платено на ръка"}
+                              {manualPaying ? "Записване..." : "Плати на ръка"}
                             </button>
                           </div>
                         ) : (
